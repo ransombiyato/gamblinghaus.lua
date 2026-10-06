@@ -38,7 +38,13 @@ was emptied; the name will be repurposed once the full mod context is provided.
 
 - `tests/test_ansi.py` measures render fidelity by parsing ANSI back to pixels
   (PSNR). Half-block truecolor is near-lossless for flat colours.
-- End-to-end tests boot Xvfb, capture a real window, and inject keys into a real
-  X client (`xev`).
+- Capture tests do **not** rely on a terminal emulator: `tests/_xwindow.py`
+  maps a plain coloured window via python-xlib and the `coloured_window()`
+  context manager in `conftest.py` yields once it is mapped. Use it instead of
+  `xterm` (xterm does not start on the CI runner).
+- Key-injection tests target `xev` and assert on the keysyms it prints; xterm
+  ignores synthetic (XTEST) events in headless containers.
+- Always poll for a window with `wait_for_window()` rather than sleeping a fixed
+  time - window mapping on CI is slow.
 - Capture clamps the region to the root window (windows larger than the screen
   would otherwise raise Xlib `BadMatch`).
