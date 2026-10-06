@@ -15,6 +15,8 @@ from PIL import Image
 from termview.capture import ImageCapture, X11Capture, find_window_id, window_geometry
 from termview.renderer import RenderOptions, render
 
+from tests.conftest import wait_for_window, wait_for_xvfb
+
 
 def _have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
@@ -67,7 +69,8 @@ def test_live_x11_capture_under_xvfb():
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-        time.sleep(0.6)
+        wait_for_window("termview-capture", display)
+        time.sleep(0.3)  # let it paint
 
         cap = X11Capture(display=display, window="termview-capture")
         frame = cap.grab()
@@ -110,7 +113,8 @@ def test_capture_clamps_window_larger_than_screen():
             ["xterm", "-T", "termview-big", "-bg", "blue", "-geometry", "60x30"],
             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        time.sleep(0.7)
+        wait_for_window("termview-big", display)
+        time.sleep(0.3)
         cap = X11Capture(display=display, window="termview-big")
         frame = cap.grab()
         cap.close()
@@ -197,10 +201,11 @@ def test_input_injection_reaches_real_window(tmp_path):
             pytest.skip("Xvfb did not come up")
 
         xev = subprocess.Popen(
-            ["xev", "-name", "termview-xev"],
+            ["stdbuf", "-oL", "xev", "-name", "termview-xev"],
             env=env, stdout=open(out_file, "wb"), stderr=subprocess.STDOUT,
         )
-        time.sleep(0.8)
+        wait_for_window("termview-xev", display)
+        time.sleep(0.3)
 
         inj = InputInjector(window="termview-xev", display=display)
         assert inj.focus_window()

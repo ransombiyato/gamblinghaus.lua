@@ -18,6 +18,8 @@ from PIL import Image
 from termview.capture import BaseCapture
 from termview.viewer import Viewer, ViewerState
 
+from tests.conftest import wait_for_window
+
 REPO = Path(__file__).resolve().parents[1]
 
 
@@ -139,7 +141,8 @@ def test_cli_grab_under_xvfb():
             ["xterm", "-T", "termview-cli", "-bg", "blue", "-geometry", "30x10"],
             env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
         )
-        time.sleep(0.7)
+        wait_for_window("termview-cli", display)
+        time.sleep(0.3)
         proc = subprocess.run(
             [sys.executable, "-m", "termview", "grab", "--window", "termview-cli",
              "--display", display, "--cols", "30", "--rows", "8"],
@@ -175,10 +178,11 @@ def test_live_cli_drives_real_window(tmp_path):
                 break
             time.sleep(0.1)
         xev = subprocess.Popen(
-            ["xev", "-name", "termview-live"],
+            ["stdbuf", "-oL", "xev", "-name", "termview-live"],
             env=env, stdout=open(xev_out, "wb"), stderr=subprocess.STDOUT,
         )
-        time.sleep(0.8)
+        wait_for_window("termview-live", display)
+        time.sleep(0.3)
 
         proc = subprocess.Popen(
             [sys.executable, "-m", "termview", "live", "--window", "termview-live",
