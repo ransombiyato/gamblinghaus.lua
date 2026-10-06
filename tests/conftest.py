@@ -2,11 +2,18 @@
 
 from __future__ import annotations
 
+import contextlib
+import os
 import subprocess
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
 import pytest
+
+REPO = Path(__file__).resolve().parents[1]
+_XWINDOW = REPO / "tests" / "_xwindow.py"
 
 
 def wait_for_xvfb(display: str, env: dict, timeout: float = 8.0) -> bool:
@@ -36,6 +43,30 @@ def wait_for_window(name: str, display: str | None = None, timeout: float = 10.0
             last_exc = exc
             time.sleep(0.1)
     raise AssertionError(f"window {name!r} never appeared: {last_exc}")
+
+
+@contextlib.contextmanager
+def coloured_window(display: str, name: str, w: int, h: int, rgb: tuple[int, int, int]):
+    """Map a plain coloured X window for the duration of the block.
+
+    Avoids depending on a terminal emulator: we create the window ourselves via
+    python-xlib, so it is mapped and painted the moment it exists.
+    """
+    env = {**os.environ, "DISPLAY": display}
+    r, g, b = (c * 257 for c in rgb)  # 8-bit -> 16-bit channels
+    proc = subprocess.Popen(
+        [sys.executable, str(_XWINDOW), display, name, str(w), str(h), str(r), str(g), str(b)],
+        env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+    )
+    try:
+        wait_for_window(name, display)
+        yield
+    finally:
+        proc.terminate()
+        try:
+            proc.wait(timeout=5)
+        except subprocess.TimeoutExpired:
+            proc.kill()
 
 
 def solid(w: int, h: int, rgb: tuple[int, int, int]) -> np.ndarray:

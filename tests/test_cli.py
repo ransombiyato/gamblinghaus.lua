@@ -18,7 +18,7 @@ from PIL import Image
 from termview.capture import BaseCapture
 from termview.viewer import Viewer, ViewerState
 
-from tests.conftest import wait_for_window
+from tests.conftest import coloured_window, wait_for_window, wait_for_xvfb
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -123,7 +123,7 @@ def _have(cmd: str) -> bool:
     return shutil.which(cmd) is not None
 
 
-@pytest.mark.skipif(not _have("Xvfb") or not _have("xterm"), reason="needs Xvfb+xterm")
+@pytest.mark.skipif(not _have("Xvfb") or not _have("xdotool"), reason="needs Xvfb+xdotool")
 def test_cli_grab_under_xvfb():
     display = ":92"
     env = {**os.environ, "DISPLAY": display}
@@ -131,28 +131,18 @@ def test_cli_grab_under_xvfb():
         ["Xvfb", display, "-screen", "0", "320x240x24"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    xterm = None
     try:
-        for _ in range(50):
-            if subprocess.run(["xdpyinfo"], env=env, capture_output=True).returncode == 0:
-                break
-            time.sleep(0.1)
-        xterm = subprocess.Popen(
-            ["xterm", "-T", "termview-cli", "-bg", "blue", "-geometry", "30x10"],
-            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        wait_for_window("termview-cli", display)
-        time.sleep(0.3)
-        proc = subprocess.run(
-            [sys.executable, "-m", "termview", "grab", "--window", "termview-cli",
-             "--display", display, "--cols", "30", "--rows", "8"],
-            cwd=REPO, capture_output=True, text=True, env=env,
-        )
-        assert proc.returncode == 0, proc.stderr
-        assert len(proc.stdout.rstrip("\n").split("\n")) == 8
+        if not wait_for_xvfb(display, env):
+            pytest.skip("Xvfb did not come up")
+        with coloured_window(display, "termview-cli", 240, 160, (0, 0, 255)):
+            proc = subprocess.run(
+                [sys.executable, "-m", "termview", "grab", "--window", "termview-cli",
+                 "--display", display, "--cols", "30", "--rows", "8"],
+                cwd=REPO, capture_output=True, text=True, env=env,
+            )
+            assert proc.returncode == 0, proc.stderr
+            assert len(proc.stdout.rstrip("\n").split("\n")) == 8
     finally:
-        if xterm is not None:
-            xterm.terminate()
         xvfb.terminate()
         xvfb.wait(timeout=5)
 

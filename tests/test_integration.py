@@ -15,7 +15,7 @@ from PIL import Image
 from termview.capture import ImageCapture, X11Capture, find_window_id, window_geometry
 from termview.renderer import RenderOptions, render
 
-from tests.conftest import wait_for_window, wait_for_xvfb
+from tests.conftest import coloured_window, wait_for_window, wait_for_xvfb
 
 
 def _have(cmd: str) -> bool:
@@ -42,7 +42,6 @@ def test_image_capture_missing_file(tmp_path):
 
 @pytest.mark.skipif(not _have("Xvfb"), reason="Xvfb not installed")
 @pytest.mark.skipif(not _have("xdotool"), reason="xdotool not installed")
-@pytest.mark.skipif(not _have("xterm"), reason="xterm not installed")
 def test_live_x11_capture_under_xvfb():
     """Boot a throwaway Xvfb, show a coloured window, capture it for real."""
     display = ":97"
@@ -51,47 +50,31 @@ def test_live_x11_capture_under_xvfb():
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
-    xterm = None
     try:
         env = {**os.environ, "DISPLAY": display}
-        for _ in range(50):
-            if subprocess.run(["xdpyinfo"], env=env, capture_output=True).returncode == 0:
-                break
-            time.sleep(0.1)
-        else:
+        if not wait_for_xvfb(display, env):
             pytest.skip("Xvfb did not come up")
 
         # Paint a known colour into a real (mapped) window. The root window of
         # a bare Xvfb is never painted, so we must capture a window.
-        xterm = subprocess.Popen(
-            ["xterm", "-T", "termview-capture", "-bg", "blue", "-geometry", "40x12"],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        wait_for_window("termview-capture", display)
-        time.sleep(0.3)  # let it paint
-
-        cap = X11Capture(display=display, window="termview-capture")
-        frame = cap.grab()
-        cap.close()
-        assert frame.shape[0] > 0 and frame.shape[1] > 0
-        # The blue we painted should dominate the frame.
-        mean = frame.reshape(-1, 3).mean(axis=0)
-        assert mean[2] > 200 and mean[2] > mean[0], f"expected blue, got {mean}"
-        # And it should render.
-        out = render(frame, 60, RenderOptions(), rows=12)
-        assert len(out.split("\n")) == 12
+        with coloured_window(display, "termview-capture", 200, 120, (0, 0, 255)):
+            cap = X11Capture(display=display, window="termview-capture")
+            frame = cap.grab()
+            cap.close()
+            assert frame.shape[0] > 0 and frame.shape[1] > 0
+            # The blue we painted should dominate the frame.
+            mean = frame.reshape(-1, 3).mean(axis=0)
+            assert mean[2] > 200 and mean[2] > mean[0], f"expected blue, got {mean}"
+            # And it should render.
+            out = render(frame, 60, RenderOptions(), rows=12)
+            assert len(out.split("\n")) == 12
     finally:
-        if xterm is not None:
-            xterm.terminate()
         xvfb.terminate()
         xvfb.wait(timeout=5)
 
 
 @pytest.mark.skipif(not _have("Xvfb"), reason="Xvfb not installed")
 @pytest.mark.skipif(not _have("xdotool"), reason="xdotool not installed")
-@pytest.mark.skipif(not _have("xterm"), reason="xterm not installed")
 def test_capture_clamps_window_larger_than_screen():
     """A window bigger than the screen must still capture (clamped), not crash."""
     display = ":89"
@@ -99,30 +82,18 @@ def test_capture_clamps_window_larger_than_screen():
         ["Xvfb", display, "-screen", "0", "320x240x24"],
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    xterm = None
     try:
         env = {**os.environ, "DISPLAY": display}
-        for _ in range(50):
-            if subprocess.run(["xdpyinfo"], env=env, capture_output=True).returncode == 0:
-                break
-            time.sleep(0.1)
-        else:
+        if not wait_for_xvfb(display, env):
             pytest.skip("Xvfb did not come up")
-        # A 60x30 xterm is far wider than the 320px screen.
-        xterm = subprocess.Popen(
-            ["xterm", "-T", "termview-big", "-bg", "blue", "-geometry", "60x30"],
-            env=env, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-        )
-        wait_for_window("termview-big", display)
-        time.sleep(0.3)
-        cap = X11Capture(display=display, window="termview-big")
-        frame = cap.grab()
-        cap.close()
-        assert frame.shape[0] <= 240 and frame.shape[1] <= 320
-        assert frame.shape[0] > 0 and frame.shape[1] > 0
+        # A 600x500 window is far bigger than the 320x240 screen.
+        with coloured_window(display, "termview-big", 600, 500, (0, 0, 255)):
+            cap = X11Capture(display=display, window="termview-big")
+            frame = cap.grab()
+            cap.close()
+            assert frame.shape[0] <= 240 and frame.shape[1] <= 320
+            assert frame.shape[0] > 0 and frame.shape[1] > 0
     finally:
-        if xterm is not None:
-            xterm.terminate()
         xvfb.terminate()
         xvfb.wait(timeout=5)
 
@@ -138,33 +109,13 @@ def test_window_search_and_geometry_under_xvfb():
     )
     try:
         env = {**os.environ, "DISPLAY": display}
-        for _ in range(50):
-            if subprocess.run(["xdpyinfo"], env=env, capture_output=True).returncode == 0:
-                break
-            time.sleep(0.1)
-        else:
+        if not wait_for_xvfb(display, env):
             pytest.skip("Xvfb did not come up")
 
-        xterm = subprocess.Popen(
-            ["xterm", "-T", "termview-e2e", "-geometry", "40x12"],
-            env=env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        try:
-            win_id = None
-            for _ in range(50):
-                try:
-                    win_id = find_window_id("termview-e2e", display)
-                    break
-                except Exception:
-                    time.sleep(0.1)
-            if win_id is None:
-                pytest.skip("xterm window never appeared")
+        with coloured_window(display, "termview-e2e", 160, 90, (0, 0, 255)):
+            win_id = find_window_id("termview-e2e", display)
             x, y, w, h = window_geometry(win_id, display)
-            assert w > 0 and h > 0
-        finally:
-            xterm.terminate()
+            assert w == 160 and h == 90, (x, y, w, h)
     finally:
         xvfb.terminate()
         xvfb.wait(timeout=5)
