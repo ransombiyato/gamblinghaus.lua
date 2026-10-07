@@ -23,6 +23,7 @@ public final class MinedarMod {
 
     public MinedarMod() {
         config = ForgeConfigIO.load(FMLPaths.CONFIGDIR.get().resolve("minedar.json"));
+        MinedarKeybinds.register();
         LOGGER.info("MiNEDAR loaded (Forge 1.20.1), minimap={} radius={}",
                 config.minimapVisible, config.minimapRadiusBlocks);
     }

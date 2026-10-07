@@ -67,6 +67,15 @@ launching it. This is the required way to playtest the mod.
 - **No audio assets are ever generated** (spec section 52). Use `SoundEventHooks`.
 - Point appearance, scan speed and minimap zoom are intentionally NOT
   configurable.
+- **Client key-mapping registration goes on the MOD event bus.** Forge fires
+  `RegisterKeyMappingsEvent` only there; `@EventBusSubscriber` auto-subscribes to
+  the game bus, so a handler for it silently never runs and *no* keybinds appear
+  in `options.txt`. `MinedarKeybinds.register()` (called from the mod
+  constructor) wires that one listener explicitly; tick handling stays on the
+  game bus.
+- Default keys: LiDAR toggle is **`G`** (not `L` — vanilla binds `L` to
+  Advancements, and a shared key fires both mappings), minimap toggle `M`,
+  fullscreen map UNBOUND (spec). LMB scans continuously, RMB bursts.
 - **Entity geometry (section 40)** is captured for real, not as hitboxes.
   `dev.minedar.core.EntityGeometry` (core) converts oriented model boxes into
   dots; `EntityModelCapture` (forge) poses the live `ModelPart` tree and
