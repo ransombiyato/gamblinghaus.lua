@@ -40,11 +40,15 @@ XTEST, so the agent can actually *see* and *drive* the game instead of only
 launching it. This is the required way to playtest the mod.
 
 - Pure Python (`numpy`, `Pillow`, `python-xlib`, `mss`); self-contained under
-  `tools/termview/`. Run its suite with `cd tools/termview && pytest` (90 tests;
+  `tools/termview/`. Run its suite with `cd tools/termview && pytest` (97 tests;
   needs `xvfb xdotool x11-utils xterm` for the X integration tests).
 - CLI: `python -m termview live --window Minecraft --cols 140 --fps 20`
-  (`grab` for one frame, `image` for a still). Tap `` ` `` for local commands;
-  every other key goes to the game.
+  (`grab` for one frame, `image` for a still). Every key goes to the game;
+  `` ` `` plus a command letter drives the tool. For mouse: `` ` `` `c` click,
+  `` ` `` `v` right-click, `` ` `` `u` / `` ` `` `j` scroll, `` ` `` `i`
+  mouse-look (arrows move the pointer). Add `--mouse` so a bare Enter clicks
+  under the pointer. Keys and clicks go in live via XTEST, so no preparation
+  is needed to press buttons.
 - CI: `.github/workflows/termview.yml`. It was briefly deleted when the repo was
   repurposed for MiNEDAR; keep it — it is not disposable.
 
