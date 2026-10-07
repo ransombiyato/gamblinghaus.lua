@@ -25,7 +25,8 @@ class FakeInjector:
     def __init__(self):
         self.keys = []
         self.moves = []
-        self.clicks = 0
+        self.clicks = []
+        self.scrolls = []
 
     def send_key(self, key, repeat=1):
         self.keys.append(key)
@@ -35,7 +36,10 @@ class FakeInjector:
         self.moves.append((dx, dy))
 
     def click(self, button=1):
-        self.clicks += 1
+        self.clicks.append(button)
+
+    def scroll(self, up=True, amount=1):
+        self.scrolls.append((up, amount))
 
 
 @pytest.fixture
@@ -110,7 +114,43 @@ def test_mouse_look_mode_redirects_arrows(viewer):
 
 def test_mouse_look_click(viewer):
     viewer.handle_keys(["`", "i", "enter"])
-    assert viewer.injector.clicks == 1
+    assert viewer.injector.clicks == [1]
+
+
+def test_mouse_look_click_requires_enter(viewer):
+    viewer.handle_keys(["`", "i", "space"])
+    assert viewer.injector.clicks == [1]
+
+
+def test_direct_click_command(viewer):
+    viewer.handle_keys(["`", "c"])
+    assert viewer.injector.clicks == [1]
+    assert viewer.injector.keys == []
+
+
+def test_direct_right_click_command(viewer):
+    viewer.handle_keys(["`", "v"])
+    assert viewer.injector.clicks == [3]
+    assert viewer.injector.keys == []
+
+
+def test_scroll_commands(viewer):
+    viewer.handle_keys(["`", "u", "`", "j"])
+    assert viewer.injector.scrolls == [(True, 1), (False, 1)]
+    assert viewer.injector.keys == []
+
+
+def test_mouse_enabled_enter_clicks(screen):
+    v = Viewer(FakeCapture(screen), state=ViewerState(cols=40, mouse_enabled=True), injector=FakeInjector())
+    v.handle_keys(["enter"])
+    assert v.injector.clicks == [1]
+    assert v.injector.keys == []
+
+
+def test_mouse_disabled_enter_is_a_key(viewer):
+    viewer.handle_keys(["enter"])
+    assert viewer.injector.clicks == []
+    assert viewer.injector.keys == ["enter"]
 
 
 def test_local_commands_not_forwarded(viewer):

@@ -35,8 +35,17 @@ SHOW_CURSOR = "\x1b[?25h"
 HELP = (
     "termview: tap ` then a command | "
     "` q quit  ` h help  ` m mode  ` d depth  ` p pause  ` i mouse-look  "
-    "` r redraw  ` + / - zoom | all other keys (wasd, arrows, enter, ...) go to the game"
+    "` c click  ` v right-click  ` u / ` j scroll  ` r redraw  ` + / - zoom | "
+    "all other keys (wasd, arrows, enter, ...) go to the game"
 )
+
+# `-prefixed letters that drive the mouse directly, with no mouse-look required.
+MOUSE_COMMANDS = {
+    "c": "click",        # left click / break
+    "v": "right-click",  # right click / place
+    "u": "scroll-up",
+    "j": "scroll-down",
+}
 
 
 @dataclass
@@ -48,6 +57,7 @@ class ViewerState:
     fps: float = 20.0
     paused: bool = False
     mouse_look: bool = False
+    mouse_enabled: bool = False
     show_help: bool = False
     command_mode: bool = False
     prefix: str = COMMAND_PREFIX
@@ -91,6 +101,7 @@ class Viewer:
             f" fps={self.state.fps:g}"
             f"{' PAUSED' if self.state.paused else ''}"
             f"{' MOUSE' if self.state.mouse_look else ''}"
+            f"{' MOUSE+' if self.state.mouse_enabled else ''}"
             f"{' CMD(``+key)' if self.state.command_mode else ''}"
         )
         lines = body.split("\n")
@@ -157,10 +168,22 @@ class Viewer:
             self.state.show_help = not self.state.show_help
         elif key == "i":
             self.state.mouse_look = not self.state.mouse_look
+        elif key in MOUSE_COMMANDS:
+            self._mouse_command(MOUSE_COMMANDS[key])
         else:
             # Unknown command: ignore rather than injecting the letter.
             return "redraw"
         return "redraw"
+
+    def _mouse_command(self, action: str) -> None:
+        if action == "click":
+            self.injector.click(1)
+        elif action == "right-click":
+            self.injector.click(3)
+        elif action == "scroll-up":
+            self.injector.scroll(True)
+        elif action == "scroll-down":
+            self.injector.scroll(False)
 
     def _forward(self, key: str) -> None:
         if self.state.mouse_look:
@@ -171,6 +194,11 @@ class Viewer:
             if key in ("enter", "space"):
                 self.injector.click(1)
                 return
+        elif self.state.mouse_enabled and key == "enter":
+            # Outside mouse-look, Enter clicks the element under the pointer so
+            # buttons can be pressed without arming a mode first.
+            self.injector.click(1)
+            return
         self.injector.send_key(key)
 
     # -- main loop ---------------------------------------------------------

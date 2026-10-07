@@ -244,6 +244,16 @@ class InputInjector:
             capture_output=True,
         )
 
+    def scroll(self, up: bool = True, amount: int = 1) -> None:
+        """Scroll the wheel via XTEST (buttons 4=up, 5=down)."""
+        button = "4" if up else "5"
+        for _ in range(max(1, amount)):
+            subprocess.run(
+                ["xdotool", "click", button],
+                env=self._env(),
+                capture_output=True,
+            )
+
     def move_to(self, x: int, y: int) -> None:
         subprocess.run(
             ["xdotool", "mousemove", str(x), str(y)],

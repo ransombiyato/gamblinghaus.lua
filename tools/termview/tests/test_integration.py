@@ -177,3 +177,58 @@ def test_input_injection_reaches_real_window(tmp_path):
             xev.terminate()
         xvfb.terminate()
         xvfb.wait(timeout=5)
+
+
+@pytest.mark.skipif(not _have("Xvfb"), reason="Xvfb not installed")
+@pytest.mark.skipif(not _have("xdotool"), reason="xdotool not installed")
+@pytest.mark.skipif(not _have("xev"), reason="xev not installed")
+def test_mouse_click_and_scroll_reach_real_window(tmp_path):
+    """Clicking/scrolling must reach a real X client (button events)."""
+    from termview.capture import window_geometry
+    from termview.input import InputInjector
+
+    display = ":93"
+    out_file = tmp_path / "xev_mouse.txt"
+    xvfb = subprocess.Popen(
+        ["Xvfb", display, "-screen", "0", "400x300x24"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    xev = None
+    try:
+        env = {**os.environ, "DISPLAY": display}
+        if not wait_for_xvfb(display, env):
+            pytest.skip("Xvfb did not come up")
+
+        xev = subprocess.Popen(
+            ["stdbuf", "-oL", "xev", "-name", "termview-mouse"],
+            env=env, stdout=open(out_file, "wb"), stderr=subprocess.STDOUT,
+        )
+        win_id = wait_for_window("termview-mouse", display)
+        time.sleep(0.3)
+
+        inj = InputInjector(window="termview-mouse", display=display)
+        assert inj.focus_window()
+        # Button events go to the window under the pointer, so aim inside it.
+        x, y, w, h = window_geometry(win_id, display)
+        inj.move_to(x + w // 2, y + h // 2)
+        time.sleep(0.2)
+        inj.click(1)          # left
+        time.sleep(0.15)
+        inj.click(3)          # right
+        time.sleep(0.15)
+        inj.scroll(True)      # wheel up -> button 4
+        time.sleep(0.5)
+
+        xev.terminate()
+        xev.wait(timeout=5)
+        xev = None
+        text = out_file.read_text(errors="replace")
+        buttons = set(re.findall(r"button (\d+)", text))
+        assert {"1", "3", "4"} <= buttons, f"missing buttons; saw {buttons}"
+        assert "MotionNotify" in text
+    finally:
+        if xev is not None:
+            xev.terminate()
+        xvfb.terminate()
+        xvfb.wait(timeout=5)

@@ -54,9 +54,18 @@ commands:
 | `` ` `` `m` | cycle render mode (half/full/ascii) |
 | `` ` `` `d` | cycle colour depth (truecolor/256/16) |
 | `` ` `` `p` | pause / resume the display      |
-| `` ` `` `i` | mouse-look mode (arrows move the mouse) |
+| `` ` `` `i` | mouse-look mode (arrows move the mouse, enter/space click) |
+| `` ` `` `c` | left-click (break / press) under the pointer |
+| `` ` `` `v` | right-click (place / use) under the pointer |
+| `` ` `` `u` / `` ` `` `j` | scroll wheel up / down |
 | `` ` `` `r` | force a redraw                  |
 | `` ` `` `+` / `` ` `` `-` | zoom (columns)       |
+
+Mouse clicks land wherever the pointer currently is. Use mouse-look (`` ` `` `i`)
+to move the pointer, or `` ` `` `c` / `` ` `` `v` / `` ` `` `u` / `` ` `` `j`
+to click and scroll directly. Start with `--mouse` to make a bare Enter click
+without arming a mode first. This means buttons and inventory slots can be
+pressed live, with no preparation.
 
 ## Render modes
 

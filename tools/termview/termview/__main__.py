@@ -61,6 +61,11 @@ def build_parser() -> argparse.ArgumentParser:
     live.add_argument("--window", default=None, help="X window name substring to forward input to")
     live.add_argument("--display", default=None, help="X display, e.g. :99")
     live.add_argument("--fps", type=float, default=20.0)
+    live.add_argument(
+        "--mouse",
+        action="store_true",
+        help="let Enter click under the pointer (mouse-look is always available via ` i)",
+    )
     _add_common(live)
 
     return parser
@@ -97,6 +102,7 @@ def main(argv: list[str] | None = None) -> int:
             cols=args.cols,
             rows=args.rows,
             fps=args.fps,
+            mouse_enabled=args.mouse,
         )
         injector = InputInjector(window=args.window, display=args.display)
         viewer = Viewer(cap, state=state, injector=injector)
