@@ -43,7 +43,7 @@ jobs:
   # Full mod builds. Each loader/version is independent so one failing target
   # does not hide the others. Minecraft is decompiled on the runner, which takes
   # a few minutes the first time.
-  forge-1.20.1:
+  forge-1_20_1:
     name: Forge 1.20.1
     runs-on: ubuntu-latest
     steps:
