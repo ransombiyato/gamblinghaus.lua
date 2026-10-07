@@ -1,0 +1,55 @@
+name: termview tests
+
+# termview is the AI's screen-to-terminal tool: it captures a live X window
+# (e.g. a headless Minecraft client) as a 1:1 terminal display and forwards
+# keystrokes back into the game via XTEST. That is how the mod gets playtested
+# for real, so its tests run on every push alongside the MiNEDAR builds.
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: termview-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Termview tests
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: tools/termview
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install X helpers
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y xvfb xdotool x11-utils xterm
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run termview tests
+        run: pytest -q
+
+      - name: Render a demo frame (sanity artifact)
+        run: |
+          python scripts/demo.py --mode ascii --cols 64 --rows 16 > demo.txt || true
+          cat demo.txt || true
+
+      - name: Upload demo frame
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: termview-demo-frame
+          path: tools/termview/demo.txt

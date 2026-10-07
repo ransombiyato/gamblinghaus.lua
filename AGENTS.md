@@ -13,7 +13,9 @@ material-aware transmission, low RAM, no ordinary world rendering while LiDAR is
 active, completely client-side.
 
 The repo was previously `gamblinghaus.lua` (a Python `termview` tool) and was
-emptied for this work; history is retained but that code is gone.
+emptied for this work. The MiNEDAR code replaced it, but `termview` itself was
+restored under `tools/termview/` — it is the playtesting harness, not the old
+project, and must stay in the tree.
 
 ## Layout (multi-version Gradle build)
 
@@ -24,10 +26,27 @@ forge-1.21.1/    Forge adapter (planned)
 forge-1.21.11/   Forge adapter (planned)
 fabric-*/        Fabric adapters (planned)
 neoforge-*/      NeoForge adapters (planned; NeoForge has no 1.20.1)
+tools/termview/  Python: the AI's screen-to-terminal playtest tool (see below)
 ```
 
 `settings.gradle` only includes loader dirs that actually exist, so partial
 checkouts configure cleanly.
+
+## Playtesting tool: `tools/termview`
+
+`termview` renders a live X window (a headless Minecraft client under Xvfb) as
+a 1:1 ANSI text/block display in the terminal and forwards keystrokes back with
+XTEST, so the agent can actually *see* and *drive* the game instead of only
+launching it. This is the required way to playtest the mod.
+
+- Pure Python (`numpy`, `Pillow`, `python-xlib`, `mss`); self-contained under
+  `tools/termview/`. Run its suite with `cd tools/termview && pytest` (90 tests;
+  needs `xvfb xdotool x11-utils xterm` for the X integration tests).
+- CLI: `python -m termview live --window Minecraft --cols 140 --fps 20`
+  (`grab` for one frame, `image` for a still). Tap `` ` `` for local commands;
+  every other key goes to the game.
+- CI: `.github/workflows/termview.yml`. It was briefly deleted when the repo was
+  repurposed for MiNEDAR; keep it — it is not disposable.
 
 ## Key conventions
 
