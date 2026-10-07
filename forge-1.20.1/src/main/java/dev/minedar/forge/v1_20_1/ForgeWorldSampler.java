@@ -1,6 +1,6 @@
 package dev.minedar.forge.v1_20_1;
 
-import dev.minedar.core.EntityCategoriser;
+import dev.minedar.core.EntityGeometry;
 import dev.minedar.core.Ray;
 import dev.minedar.core.SpecialBlockRules;
 import dev.minedar.core.WorldSampler;
@@ -10,10 +10,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
-import net.minecraft.world.entity.Mob;
-import net.minecraft.world.entity.MobCategory;
-import net.minecraft.world.entity.monster.Enemy;
-import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.level.block.state.BlockState;
 import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.AABB;
@@ -83,45 +79,35 @@ public final class ForgeWorldSampler implements WorldSampler {
         Vec3 from = new Vec3(ray.ox, ray.oy, ray.oz);
         Vec3 to = new Vec3(ray.pointX(maxDistance), ray.pointY(maxDistance), ray.pointZ(maxDistance));
         AABB box = new AABB(from, to).inflate(1.5);
-        for (Entity e : level.getEntities((Entity) null, box, ent -> !(ent instanceof Player))) {
-            AABB bb = e.getBoundingBox();
-            int colour = colourFor(e);
-            // Sample the model volume so limbs/body appear as geometry. The
-            // renderer can refine this later from the real model when available.
-            int n = 6;
-            for (int i = 0; i < n; i++) {
-                double t = (i + 0.5) / n;
-                out.add(new SampledEntity(
-                        bb.minX + (bb.maxX - bb.minX) * t,
-                        bb.minY + (bb.maxY - bb.minY) * t,
-                        (bb.minZ + bb.maxZ) * 0.5,
-                        colour));
+        float partial = Minecraft.getInstance().getPartialTick();
+        for (Entity e : level.getEntities((Entity) null, box, ent -> true)) {
+            // Real model geometry (section 40): project each posed model cube.
+            List<EntityGeometry.Box> boxes = EntityModelCapture.boxes(e, partial);
+            if (boxes.isEmpty()) {
+                continue; // ScanEngine falls back to entityBoxesAlong for this entity
+            }
+            for (SampledEntity p : EntityGeometry.sample(boxes, EntityColours.colourFor(e))) {
+                out.add(p);
             }
         }
         return out;
     }
 
-    /** Category colours per section 41: hostile red, neutral yellow, visible otherwise. */
-    static int colourFor(Entity e) {
-        if (e instanceof Player) {
-            return 0xE0C0A0;
+    @Override
+    public List<EntityGeometry.Box> entityBoxesAlong(Ray ray, double maxDistance) {
+        List<EntityGeometry.Box> out = new ArrayList<>();
+        ClientLevel level = Minecraft.getInstance().level;
+        if (level == null) {
+            return out;
         }
-        if (e instanceof Mob mob) {
-            if (isBossLike(e)) {
-                return 0x666666;
-            }
-            if (mob.getType().getCategory() == MobCategory.MONSTER || e instanceof Enemy) {
-                return EntityCategoriser.HOSTILE_RED;
-            }
-            return EntityCategoriser.NEUTRAL_YELLOW;
+        Vec3 from = new Vec3(ray.ox, ray.oy, ray.oz);
+        Vec3 to = new Vec3(ray.pointX(maxDistance), ray.pointY(maxDistance), ray.pointZ(maxDistance));
+        AABB box = new AABB(from, to).inflate(1.5);
+        for (Entity e : level.getEntities((Entity) null, box, ent -> true)) {
+            AABB bb = e.getBoundingBox();
+            out.add(new EntityGeometry.Box(bb.minX, bb.minY, bb.minZ,
+                    bb.maxX, bb.maxY, bb.maxZ, EntityColours.colourFor(e)));
         }
-        return 0xFFFFFF;
-    }
-
-    private static boolean isBossLike(Entity e) {
-        var key = ForgeRegistries.ENTITY_TYPES.getKey(e.getType());
-        String id = key == null ? "" : key.getPath();
-        return id.contains("ender_dragon") || id.contains("wither")
-                || id.contains("warden") || id.contains("elder_guardian");
+        return out;
     }
 }

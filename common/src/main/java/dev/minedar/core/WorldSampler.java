@@ -86,4 +86,13 @@ public interface WorldSampler {
     default java.util.List<SampledParticle> particlesAlong(Ray ray, double maxDistance) {
         return java.util.List.of();
     }
+
+    /**
+     * World-space model boxes of entities the ray passes near, used when the
+     * loader cannot yet resolve true per-part geometry (section 40). The default
+     * is empty; adapters override it with real entity bounding volumes.
+     */
+    default java.util.List<EntityGeometry.Box> entityBoxesAlong(Ray ray, double maxDistance) {
+        return java.util.List.of();
+    }
 }

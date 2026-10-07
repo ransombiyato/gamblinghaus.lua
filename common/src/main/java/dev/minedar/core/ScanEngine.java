@@ -49,7 +49,16 @@ public final class ScanEngine {
 
         // Entities and particles are geometry too; they are not affected by the
         // block transmission chain but obey their own category colours.
-        for (WorldSampler.SampledEntity e : world.entitiesAlong(ray, maxDistance)) {
+        List<WorldSampler.SampledEntity> entityDots = world.entitiesAlong(ray, maxDistance);
+        if (entityDots.isEmpty()) {
+            // Loader could not resolve real model geometry for this pass; fall
+            // back to the entity's occupied boxes so mobs still register.
+            List<EntityGeometry.Box> boxes = world.entityBoxesAlong(ray, maxDistance);
+            if (!boxes.isEmpty()) {
+                entityDots = EntityGeometry.sample(boxes, 0xFFFFFF);
+            }
+        }
+        for (WorldSampler.SampledEntity e : entityDots) {
             out.add(e.x, e.y, e.z, e.rgb, 255);
             if (minimap != null) {
                 minimap.add(e.x - playerX, e.z - playerZ, 1);

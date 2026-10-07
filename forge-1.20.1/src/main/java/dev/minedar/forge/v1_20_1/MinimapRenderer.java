@@ -1,6 +1,5 @@
 package dev.minedar.forge.v1_20_1;
 
-import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.PoseStack;
 import com.mojang.math.Axis;
 import dev.minedar.core.MinimapDensityStore;
@@ -8,7 +7,6 @@ import dev.minedar.core.MinimapLayout;
 import dev.minedar.core.PeerScannerRegistry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
-import net.minecraft.network.chat.Component;
 
 /**
  * Draws the minimap, the fullscreen map, and the small LiDAR crosshair
@@ -50,10 +48,6 @@ public final class MinimapRenderer {
         double full = Math.min(width, height) * 0.46;
         double half = MinimapLayout.interpolatedRadius(MINIMAP_HALF_PX, full, progress);
         drawMap(g, width, height, half, true, partialTick);
-
-        // Darken everything else so only the map interface remains (section 72).
-        int shade = (int) (0xB0 * progress) << 24;
-        // (drawn first would be ideal; Gui mixin already blanks vanilla HUD)
     }
 
     private void drawMap(GuiGraphics g, int width, int height, double halfPx,
