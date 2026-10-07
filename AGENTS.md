@@ -44,6 +44,14 @@ checkouts configure cleanly.
 - **No audio assets are ever generated** (spec section 52). Use `SoundEventHooks`.
 - Point appearance, scan speed and minimap zoom are intentionally NOT
   configurable.
+- **Entity geometry (section 40)** is captured for real, not as hitboxes.
+  `dev.minedar.core.EntityGeometry` (core) converts oriented model boxes into
+  dots; `EntityModelCapture` (forge) poses the live `ModelPart` tree and
+  projects each `ModelPart.Cube` to world space via `ModelPart.visit`. The only
+  non-public API touched is one reflectively-read field on
+  `PoseStack.Pose` (`pose`); if that ever changes, capture degrades to
+  `entityBoxesAlong` bounding volumes instead of failing. Keep it that way —
+  no hard dependency on obfuscated/internal names.
 
 ## Build / test
 
