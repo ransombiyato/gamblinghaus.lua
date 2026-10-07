@@ -4,6 +4,7 @@ import dev.minedar.core.ScannerController;
 import dev.minedar.core.ShaderStateManager;
 import net.minecraft.client.Minecraft;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
 import net.minecraftforge.client.event.RenderLevelStageEvent;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -65,11 +66,11 @@ public final class ClientEvents {
     }
 
     @SubscribeEvent
-    public static void onRenderGuiOverlayPost(RenderGuiOverlayEvent.Post event) {
-        // Draw MiNEDAR's own overlay after the vanilla crosshair pass.
-        if (!event.getOverlay().id().getPath().equals("crosshair")) {
-            return;
-        }
+    public static void onRenderGuiEventPost(RenderGuiEvent.Post event) {
+        // Draw MiNEDAR's own overlay once the HUD pass is done. This must NOT
+        // hang off the crosshair overlay's Post hook: in LiDAR mode the crosshair
+        // Pre is canceled, which suppresses its Post and would silently drop the
+        // minimap/heatmap exactly when the player is scanning.
         Minecraft mc = Minecraft.getInstance();
         var g = event.getGuiGraphics();
         int w = mc.getWindow().getGuiScaledWidth();
