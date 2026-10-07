@@ -4,47 +4,66 @@ Repository-specific notes for agents working in this repo.
 
 ## What this repo is
 
-`termview` — a Python tool that renders a window (target use case: a
-**client-side Minecraft** window) as a 1:1 terminal display and forwards
-keystrokes back into the game. The repo was originally `gamblinghaus.lua` and
-was emptied; the name will be repurposed once the full mod context is provided.
+**MiNEDAR** — a client-only Minecraft LiDAR mod. It converts real world
+geometry, entities, particles, fluids and special materials into a persistent,
+material-aware point cloud with a live accumulated-dot heatmap minimap. Inspired
+by the classic GMod LiDAR tool. The full spec lives outside the repo; the
+defining rules are: LiDAR first, actual geometry, historical scan points,
+material-aware transmission, low RAM, no ordinary world rendering while LiDAR is
+active, completely client-side.
+
+The repo was previously `gamblinghaus.lua` (a Python `termview` tool) and was
+emptied for this work; history is retained but that code is gone.
+
+## Layout (multi-version Gradle build)
+
+```
+common/          pure-Java core, no Minecraft dependency, fully unit-tested
+forge-1.20.1/    Forge adapter (primary target)
+forge-1.21.1/    Forge adapter (planned)
+forge-1.21.11/   Forge adapter (planned)
+fabric-*/        Fabric adapters (planned)
+neoforge-*/      NeoForge adapters (planned; NeoForge has no 1.20.1)
+```
+
+`settings.gradle` only includes loader dirs that actually exist, so partial
+checkouts configure cleanly.
+
+## Key conventions
+
+- **All LiDAR logic belongs in `common` (package `dev.minedar.core`)**, which has
+  no Minecraft imports and is covered by JUnit tests. Loader modules are thin
+  adapters only: events, rendering, real block/entity sampling, disk IO.
+- Each loader jar **compiles the core sources in directly**
+  (`sourceSets.main.java.srcDir rootProject.file('common/src/main/java')`) so the
+  built mod jar is self-contained. Do not reintroduce `project(':common')` +
+  `jarJar` dependencies; ForgeGradle 6's jarJar DSL makes that fragile.
+- Versions: Forge 1.20.1-47.4.26, 1.21.1-52.1.16, 1.21.11-61.2.1; NeoForge
+  1.21.1 (~21.1.256), 1.21.11 (~21.11.45). Toolchains: Java 17 for 1.20.1/1.21.1,
+  Java 21 for 1.21.11.
+- **No audio assets are ever generated** (spec section 52). Use `SoundEventHooks`.
+- Point appearance, scan speed and minimap zoom are intentionally NOT
+  configurable.
+
+## Build / test
+
+- Gradle wrapper is pinned to **8.8** (ForgeGradle 6 needs it; do not bump to 9).
+- `./gradlew :common:test` runs the core suite (fast, no Minecraft download).
+- `./gradlew :forge-1.20.1:build` produces the mod jar.
+- The foojay toolchain resolver in `settings.gradle` auto-provisions JDK 17/21.
+- **All builds run via GitHub Actions** (`.github/workflows/minedar.yml`), per
+  user policy, so runs are visible on GitHub.
 
 ## Environment (this container)
 
-- No GPU (`/dev/dri` absent), Docker daemon unavailable.
-- Java/JDK not installed (apt-installable, OpenJDK 21) if Minecraft needs to run.
-- Network to Maven Central / GitHub works.
-- X stack: `Xvfb`, `xdotool`, `xterm`, `x11-utils` (incl. `xev`) installed.
-  Python: `numpy`, `Pillow`, `python-xlib`, `mss`, `pytest`.
-- **`xterm` ignores XTEST key events in this container** — use `xev` as the
-  verifiable injection target in tests instead.
-
-## Conventions
-
-- Run tests with `pytest` from the repo root (config in `pyproject.toml`).
-- X-dependent tests are guarded with `pytest.mark.skipif(shutil.which(...))`.
-- Keys: every key is forwarded to the game by default; local tool commands are
-  behind the `` ` `` prefix key so they never collide with WASD.
+- No GPU. Network to Maven Central / GitHub / Forge maven works.
+- JDK 21 is preinstalled; JDK 17 is not in apt, the toolchain resolver or a
+  manual Temurin install provides it.
+- `unzip` and `bc` are not installed; use `jar`/`python` for archives.
 
 ## Git / credentials
 
-- `GITHUB_TOKEN` is a **read-only GitHub App token** — pushing with it 403s.
-  Use `GITHUB_PERSONAL_ACCESS_TOKEN` (has `repo` + `workflow` scope) for pushes.
+- `GITHUB_TOKEN` is a read-only GitHub App token — pushing with it 403s. Use
+  `GITHUB_PERSONAL_ACCESS_TOKEN` (has `repo` + `workflow` scope) for pushes.
 - Remote: `https://<PAT>@github.com/ransombiyato/gamblinghaus.lua.git`.
 - Git identity: `openhands` / `openhands@all-hands.dev`.
-- Per user policy: commit and push everything; run builds via GitHub Actions.
-
-## Testing notes
-
-- `tests/test_ansi.py` measures render fidelity by parsing ANSI back to pixels
-  (PSNR). Half-block truecolor is near-lossless for flat colours.
-- Capture tests do **not** rely on a terminal emulator: `tests/_xwindow.py`
-  maps a plain coloured window via python-xlib and the `coloured_window()`
-  context manager in `conftest.py` yields once it is mapped. Use it instead of
-  `xterm` (xterm does not start on the CI runner).
-- Key-injection tests target `xev` and assert on the keysyms it prints; xterm
-  ignores synthetic (XTEST) events in headless containers.
-- Always poll for a window with `wait_for_window()` rather than sleeping a fixed
-  time - window mapping on CI is slow.
-- Capture clamps the region to the root window (windows larger than the screen
-  would otherwise raise Xlib `BadMatch`).

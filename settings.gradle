@@ -1,0 +1,31 @@
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        mavenCentral()
+        maven { name = 'Fabric'; url = 'https://maven.fabricmc.net/' }
+        maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases' }
+        maven { name = 'MinecraftForge'; url = 'https://maven.minecraftforge.net/' }
+        maven { name = 'Mojang'; url = 'https://libraries.minecraft.net/' }
+    }
+}
+
+// Lets Gradle auto-provision the per-version JDKs (8/17/21) the loader modules
+// require, instead of failing when one is not preinstalled on the machine.
+plugins {
+    id 'org.gradle.toolchains.foojay-resolver-convention' version '0.7.0'
+}
+
+rootProject.name = 'minedar'
+
+include 'common'
+// Loader adapters. Each is added as its build script is written, so partial
+// checkouts still configure cleanly.
+for (adapter in ['forge-1.20.1', 'forge-1.21.1', 'forge-1.21.11',
+                 'neoforge-1.21.1', 'neoforge-1.21.11',
+                 'fabric-1.20.1', 'fabric-1.21.1', 'fabric-1.21.11']) {
+    def dir = file(adapter)
+    if (dir.isDirectory()) {
+        include adapter
+        project(":$adapter").projectDir = dir
+    }
+}

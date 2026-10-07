@@ -1,0 +1,15 @@
+// Root project: just aggregates the modules. No plugins that need Minecraft
+// here, so `gradlew :common:test` works on any machine with a JDK and network.
+allprojects {
+    group = 'dev.minedar'
+    version = '0.1.0'
+}
+
+subprojects {
+    repositories {
+        mavenCentral()
+    }
+    tasks.withType(JavaCompile).configureEach {
+        options.encoding = 'UTF-8'
+    }
+}
