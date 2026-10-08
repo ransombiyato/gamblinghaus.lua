@@ -1,15 +1,13 @@
 package dev.minedar.forge.v1_21_1;
 
+import dev.minedar.core.CachedSpatialStore;
 import dev.minedar.core.MinimapDensityStore;
-import dev.minedar.core.MinedarConfig;
-import dev.minedar.core.PersistentScanStore;
+import dev.minedar.core.PeerScannerRegistry;
 import dev.minedar.core.ScanEngine;
 import dev.minedar.core.ScannerController;
-import dev.minedar.core.SpatialChunkStore;
 import dev.minedar.core.WorldIdentity;
-import java.io.IOException;
 import java.nio.file.Path;
-import java.util.Map;
+import java.util.List;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
 import net.minecraftforge.api.distmarker.Dist;
@@ -28,36 +26,22 @@ import org.slf4j.Logger;
 public final class MinedarClient {
 
     private static final Logger LOG = MinedarMod.LOGGER;
-
     private static final MinedarClient INSTANCE = new MinedarClient();
 
     private final ScannerController controller = new ScannerController();
     private final MaterialRulesRegistry materials = new MaterialRulesRegistry();
     private final ScanEngine engine = new ScanEngine(materials.rules());
-private final CachedSpatialStore pointCloud;
-    private final MinimapDensityStore minimap =
-            new MinimapDensityStore(32, 1.0);
+    private final MinimapDensityStore minimap = new MinimapDensityStore(32, 1.0);
     private final PeerScannerRegistry peers = new PeerScannerRegistry();
     private final ForgeWorldSampler sampler = new ForgeWorldSampler();
 
+    private CachedSpatialStore pointCloud;
     private WorldIdentity currentWorld;
     private int saveCooldown;
     private int tickCounter;
 
     private MinedarClient() {
-        this.pointCloud = null;
-    }
-    private final SpatialChunkStore pointCloud = new SpatialChunkStore();
-    private final MinimapDensityStore minimap =
-            new MinimapDensityStore(32, 1.0);
-    private final dev.minedar.core.PeerScannerRegistry peers = new dev.minedar.core.PeerScannerRegistry();
-    private final ForgeWorldSampler sampler = new ForgeWorldSampler();
-
-    private WorldIdentity currentWorld;
-    private int saveCooldown;
-    private int tickCounter;
-
-    private MinedarClient() {
+        // pointCloud is created when a world is loaded.
     }
 
     public static MinedarClient get() {
@@ -68,7 +52,7 @@ private final CachedSpatialStore pointCloud;
         return controller;
     }
 
-    public SpatialChunkStore pointCloud() {
+    public CachedSpatialStore pointCloud() {
         return pointCloud;
     }
 
@@ -76,18 +60,22 @@ private final CachedSpatialStore pointCloud;
         return minimap;
     }
 
-    public dev.minedar.core.PeerScannerRegistry peers() {
+    public PeerScannerRegistry peers() {
         return peers;
     }
 
     public MaterialRulesRegistry materials() {
         return materials;
-public void onWorldChanged(ClientLevel level) {
+    }
+
+    /** Called when the client joins a world/server or changes dimension. */
+    public void onWorldChanged(ClientLevel level) {
         if (level == null) {
             flushIfNeeded();
             currentWorld = null;
             if (pointCloud != null) {
                 pointCloud.clear();
+                pointCloud = null;
             }
             minimap.clear();
             return;
@@ -98,32 +86,9 @@ public void onWorldChanged(ClientLevel level) {
         }
         flushIfNeeded();
         currentWorld = identity;
-        int maxSections = 500;
         Path worldDir = ScanStorage.pathFor(identity);
-        pointCloud = new CachedSpatialStore(worldDir, maxSections);
+        pointCloud = new CachedSpatialStore(worldDir, 500);
         minimap.clear();
-        LOG.info("MiNEDAR tracking world {}", identity.id());
-    }
-    }
-
-    /** Called when the client joins a world/server or changes dimension. */
-    public void onWorldChanged(ClientLevel level) {
-        if (level == null) {
-            flushIfNeeded();
-            currentWorld = null;
-            pointCloud.clear();
-            minimap.clear();
-            return;
-        }
-        WorldIdentity identity = identityFor(level);
-        if (identity.equals(currentWorld)) {
-            return;
-        }
-        flushIfNeeded();
-        currentWorld = identity;
-        pointCloud.clear();
-        minimap.clear();
-        loadFromDisk();
         LOG.info("MiNEDAR tracking world {}", identity.id());
     }
 
@@ -142,26 +107,9 @@ public void onWorldChanged(ClientLevel level) {
     }
 
     /** Fires a scan for each ray direction, writing results into the cloud. */
-    public void performScan(java.util.List<double[]> dirs) {
+    public void performScan(List<double[]> dirs) {
         ClientLevel level = Minecraft.getInstance().level;
-public void flushIfNeeded() {
-        if (saveCooldown > 0 && currentWorld != null) {
-            saveCooldown = 0;
-            if (pointCloud != null) {
-                pointCloud.flush();
-            }
-        }
-    }
-
-    private void saveToDisk() {
-        if (currentWorld == null) {
-            return;
-        }
-        if (pointCloud != null) {
-            pointCloud.flush();
-        }
-    }
-        if (level == null || dirs.isEmpty()) {
+        if (level == null || dirs.isEmpty() || pointCloud == null) {
             return;
         }
         var player = Minecraft.getInstance().player;
@@ -173,7 +121,6 @@ public void flushIfNeeded() {
         double ez = player.getZ();
         double maxDist = MinedarMod.config().scanDistance;
 
-        // Rotate the pattern from model space into world space using the player's look.
         float yaw = player.getYRot();
         float pitch = player.getXRot();
         for (double[] d : dirs) {
@@ -184,11 +131,9 @@ public void flushIfNeeded() {
         markDirty();
     }
 
-    /** Converts a model-space direction into a world direction (Minecraft yaw/pitch). */
     static double[] rotateToWorld(double[] d, float yawDeg, float pitchDeg) {
         double yaw = Math.toRadians(yawDeg);
         double pitch = Math.toRadians(pitchDeg);
-        // Minecraft: -Z forward. Apply pitch about X, then yaw about Y.
         double x1 = d[0];
         double y1 = d[1] * Math.cos(pitch) - d[2] * Math.sin(pitch);
         double z1 = d[1] * Math.sin(pitch) + d[2] * Math.cos(pitch);
@@ -202,40 +147,15 @@ public void flushIfNeeded() {
     }
 
     public void flushIfNeeded() {
-        if (saveCooldown > 0 && currentWorld != null) {
+        if (saveCooldown > 0 && currentWorld != null && pointCloud != null) {
             saveCooldown = 0;
-            saveToDisk();
-        }
-    }
-
-    private Path storePath() {
-        return ScanStorage.pathFor(currentWorld);
-    }
-
-    private void loadFromDisk() {
-        if (currentWorld == null) {
-            return;
-        }
-        try {
-            Map<Long, dev.minedar.core.PointCloudSection> sections =
-                    PersistentScanStore.load(storePath());
-            for (var e : sections.entrySet()) {
-                pointCloud.view().put(e.getKey(), e.getValue());
-            }
-            LOG.info("Loaded {} sections for {}", pointCloud.sectionCount(), currentWorld.id());
-        } catch (IOException e) {
-            LOG.warn("Could not load scan data for {}, starting fresh", currentWorld.id(), e);
+            pointCloud.flush();
         }
     }
 
     private void saveToDisk() {
-        if (currentWorld == null) {
-            return;
-        }
-        try {
-            PersistentScanStore.save(storePath(), pointCloud.view());
-        } catch (IOException e) {
-            LOG.warn("Could not save scan data for {}", currentWorld.id(), e);
+        if (currentWorld != null && pointCloud != null) {
+            pointCloud.flush();
         }
     }
 
@@ -256,10 +176,25 @@ public void flushIfNeeded() {
         tickCounter++;
 
         MinedarKeybinds.applyHeldState(controller);
-        int rays = controller.tick();
-        if (rays > 0) {
-            performScan(controller.directionsFor(rays));
+        controller.tick();
+
+        int batchSize;
+        ScannerController.ScanMode mode = controller.mode();
+        if (mode == ScannerController.ScanMode.CONTINUOUS) {
+            batchSize = 15;
+        } else if (mode == ScannerController.ScanMode.BURST) {
+            batchSize = 50;
+        } else {
+            batchSize = 0;
         }
+
+        if (batchSize > 0 && controller.isScanning()) {
+            List<double[]> batch = controller.getBatch(batchSize);
+            if (batch != null && !batch.isEmpty()) {
+                performScan(batch);
+            }
+        }
+
         if (MinedarMod.config().minimapVisible) {
             minimap.decayStep();
         }

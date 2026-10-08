@@ -225,15 +225,8 @@ public ScanMode mode() {
         currentPattern = null;
         patternIndex = 0;
         double densityFactor = range.pointDensityFactor();
-        // Determine total rays needed for a full cone based on densityFactor
-        int totalRays = (int) Math.round(ScanPatternGenerator.BASE_COUNT * densityFactor);
-        totalRays = Math.max(1, totalRays);
-        // Generate full pattern
-        currentPattern = ScanPatternGenerator.directions(densityFactor, totalRays);
-        // Clamp to at most totalRays
-        if (currentPattern.size() > totalRays) {
-            currentPattern = currentPattern.subList(0, totalRays);
-        }
+        // Generate the full cone pattern for the current radius/density.
+        currentPattern = ScanPatternGenerator.directions(densityFactor, Integer.MAX_VALUE);
     }
 
     private void stopScan() {
