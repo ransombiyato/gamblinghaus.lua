@@ -33,6 +33,19 @@ public final class MinedarClient {
 
     private final ScannerController controller = new ScannerController();
     private final MaterialRulesRegistry materials = new MaterialRulesRegistry();
+private final CachedSpatialStore pointCloud;
+    private final MinimapDensityStore minimap =
+            new MinimapDensityStore(32, 1.0);
+    private final PeerScannerRegistry peers = new PeerScannerRegistry();
+    private final NeoForgeWorldSampler sampler = new NeoForgeWorldSampler();
+
+    private WorldIdentity currentWorld;
+    private int saveCooldown;
+    private int tickCounter;
+
+    private MinedarClient() {
+        this.pointCloud = null;
+    }
     private final ScanEngine engine = new ScanEngine(materials.rules());
     private final SpatialChunkStore pointCloud = new SpatialChunkStore();
     private final MinimapDensityStore minimap =
@@ -68,6 +81,28 @@ public final class MinedarClient {
     }
 
     public MaterialRulesRegistry materials() {
+public void onWorldChanged(ClientLevel level) {
+        if (level == null) {
+            flushIfNeeded();
+            currentWorld = null;
+            if (pointCloud != null) {
+                pointCloud.clear();
+            }
+            minimap.clear();
+            return;
+        }
+        WorldIdentity identity = identityFor(level);
+        if (identity.equals(currentWorld)) {
+            return;
+        }
+        flushIfNeeded();
+        currentWorld = identity;
+        int maxSections = 500;
+        Path worldDir = ScanStorage.pathFor(identity);
+        pointCloud = new CachedSpatialStore(worldDir, maxSections);
+        minimap.clear();
+        LOG.info("MiNEDAR tracking world {}", identity.id());
+    }
         return materials;
     }
 
@@ -108,6 +143,23 @@ public final class MinedarClient {
 
     /** Fires a scan for each ray direction, writing results into the cloud. */
     public void performScan(java.util.List<double[]> dirs) {
+public void flushIfNeeded() {
+        if (saveCooldown > 0 && currentWorld != null) {
+            saveCooldown = 0;
+            if (pointCloud != null) {
+                pointCloud.flush();
+            }
+        }
+    }
+
+    private void saveToDisk() {
+        if (currentWorld == null) {
+            return;
+        }
+        if (pointCloud != null) {
+            pointCloud.flush();
+        }
+    }
         ClientLevel level = Minecraft.getInstance().level;
         if (level == null || dirs.isEmpty()) {
             return;

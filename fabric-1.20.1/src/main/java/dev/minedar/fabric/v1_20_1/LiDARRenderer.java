@@ -11,7 +11,7 @@ import com.mojang.blaze3d.vertex.VertexSorting;
 import com.mojang.math.Axis;
 import dev.minedar.core.Colour;
 import dev.minedar.core.PointCloudRenderer;
-import dev.minedar.core.SpatialChunkStore;
+import dev.minedar.core.CachedSpatialStore;
 import net.minecraft.client.Camera;
 import net.minecraft.client.renderer.GameRenderer;
 import net.minecraft.world.phys.Vec3;
@@ -48,7 +48,7 @@ public final class LiDARRenderer {
      */
     public void render(Camera camera, Matrix4f projectionMatrix,
                        double maxDistance, double camRightX, double camRightZ) {
-        SpatialChunkStore cloud = MinedarClient.get().pointCloud();
+        CachedSpatialStore cloud = MinedarClient.get().pointCloud();
         if (cloud.sectionCount() == 0) {
             return;
         }
@@ -61,6 +61,7 @@ public final class LiDARRenderer {
         modelView.mulPose(Axis.XP.rotationDegrees(camera.getXRot()));
         modelView.mulPose(Axis.YP.rotationDegrees(camera.getYRot() + 180.0f));
         RenderSystem.applyModelViewMatrix();
+
         RenderSystem.setProjectionMatrix(projectionMatrix, VertexSorting.DISTANCE_TO_ORIGIN);
 
         RenderSystem.enableBlend();
@@ -69,11 +70,12 @@ public final class LiDARRenderer {
         RenderSystem.depthMask(false);
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
-        Tesselator tess = Tesselator.getInstance();
+Tesselator tess = Tesselator.getInstance();
+        Tesselator tess = Tesselizer.getInstance();
         BufferBuilder bb = tess.getBuilder();
         bb.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
-        int emitted = PointCloudRenderer.forEachVisibleDot(cloud, cam.x, cam.y, cam.z,
+        PointCloudRenderer.forEachVisibleDot(cloud.view(), cam.x, cam.y, cam.z,
                 maxDistance, camRightX, camRightZ,
                 (x, y, z, rx, rz, h, intensity, rgb) -> {
                     float r = Colour.red(rgb) / 255.0f;
@@ -89,7 +91,7 @@ public final class LiDARRenderer {
                 });
 
         BufferBuilder.RenderedBuffer rendered = bb.end();
-        if (emitted > 0) {
+        if (cloud.sectionCount() > 0) {
             BufferUploader.drawWithShader(rendered);
         }
 

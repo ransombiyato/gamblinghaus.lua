@@ -34,7 +34,25 @@ public final class MinedarClient {
     private final ScannerController controller = new ScannerController();
     private final MaterialRulesRegistry materials = new MaterialRulesRegistry();
     private final ScanEngine engine = new ScanEngine(materials.rules());
+private final CachedSpatialStore pointCloud;
     private final SpatialChunkStore pointCloud = new SpatialChunkStore();
+private final MinimapDensityStore minimap =
+            new MinimapDensityStore(32, 1.0);
+    private final PeerScannerRegistry peers = new dev.minedar.core.PeerScannerRegistry();
+    private final ForgeWorldSampler sampler = new ForgeWorldSampler();
+
+    private WorldIdentity currentWorld;
+    private int saveCooldown;
+    private int tickCounter;
+
+    private MinedarClient() {
+        // Determine cache size based on available memory? For now, fixed.
+        int maxSections = 1000; // adjust as needed
+        Path storage = ScanStorage.getWorldDirectory(null); // need to handle world-specific
+        // Actually, we need the base directory for the world's scans.
+        // We'll initialize in onWorldChanged.
+        this.pointCloud = null; // will be created on first world
+    }
     private final MinimapDensityStore minimap =
             new MinimapDensityStore(32, 1.0);
     private final dev.minedar.core.PeerScannerRegistry peers = new dev.minedar.core.PeerScannerRegistry();
@@ -51,6 +69,13 @@ public final class MinedarClient {
         return INSTANCE;
     }
 
+public ScannerController controller() {
+        return controller;
+    }
+
+    public ScanMode scanMode() {
+        return controller.mode(); // need to add this getter
+    }
     public ScannerController controller() {
         return controller;
     }
@@ -65,6 +90,32 @@ public final class MinedarClient {
 
     public dev.minedar.core.PeerScannerRegistry peers() {
         return peers;
+public void onWorldChanged(ClientLevel level) {
+        if (level == null) {
+            flushIfNeeded();
+            currentWorld = null;
+            if (pointCloud != null) {
+                pointCloud.clear();
+            }
+            if (minimap != null) {
+                minimap.clear();
+            }
+            return;
+        }
+        WorldIdentity identity = identityFor(level);
+        if (identity.equals(currentWorld)) {
+            return;
+        }
+        flushIfNeeded();
+        currentWorld = identity;
+        // Create a new cache for this world; use a max of 500 sections (adjustable)
+        int maxSections = 500;
+        Path worldDir = ScanStorage.pathFor(identity);
+        pointCloud = new CachedSpatialStore(worldDir, maxSections);
+        minimap.clear();
+        loadFromDisk();
+        LOG.info("MiNEDAR tracking world {}", identity.id());
+    }
     }
 
     public MaterialRulesRegistry materials() {
@@ -105,12 +156,54 @@ public final class MinedarClient {
         String dimension = level.dimension().location().toString();
         return new WorldIdentity(worldKey, dimension);
     }
+private void loadFromDisk() {
+        if (currentWorld == null) {
+            return;
+        }
+        try {
+            Map<Long, dev.minedar.core.PointCloudSection> sections =
+                    PersistentScanStore.load(storePath());
+            // Bulk load into cache
+            pointCloud.putAll(sections);
+            LOG.info("Loaded {} sections for {}", sections.size(), currentWorld.id());
+        } catch (IOException e) {
+            LOG.warn("Could not load scan data for {}, starting fresh", currentWorld.id(), e);
+        }
+    }
+
+    private void saveToDisk() {
+        if (currentWorld == null) {
+            return;
+        }
+        if (saveCooldown > 0) {
+            saveCooldown = 0;
+        }
+        pointCloud.flush();
+        LOG.info("Saved point cloud for {}", currentWorld.id());
+    }
 
     /** Fires a scan for each ray direction, writing results into the cloud. */
     public void performScan(java.util.List<double[]> dirs) {
         ClientLevel level = Minecraft.getInstance().level;
         if (level == null || dirs.isEmpty()) {
             return;
+public void flushIfNeeded() {
+        if (saveCooldown > 0 && currentWorld != null) {
+            saveCooldown = 0;
+            if (pointCloud != null) {
+                pointCloud.flush();
+            }
+        }
+    }
+
+    private void saveToDisk() {
+        if (currentWorld == null) {
+            return;
+        }
+        if (pointCloud != null) {
+            pointCloud.flush();
+        }
+    }
         }
         var player = Minecraft.getInstance().player;
         if (player == null) {
@@ -210,6 +303,53 @@ public final class MinedarClient {
         }
         if (MinedarMod.config().minimapVisible) {
             minimap.decayStep();
+@SubscribeEvent
+    public static void onClientTick(TickEvent.ClientTickEvent event) {
+        if (event.phase != TickEvent.Phase.END) {
+            return;
+        }
+        INSTANCE.tickClient();
+    }
+
+    private void tickClient() {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.level == null) {
+            return;
+        }
+        onWorldChanged(mc.level);
+        tickCounter++;
+
+        MinedarKeybinds.applyHeldState(controller);
+        controller.tick(); // updates radius and scanning mode
+
+        // Determine batch size based on current scan mode
+        int batchSize;
+        ScannerController.ScanMode mode = controller.mode();
+        if (mode == ScannerController.ScanMode.CONTINUOUS) {
+            batchSize = 15; // rays per tick for continuous scan
+        } else if (mode == ScannerController.ScanMode.BURST) {
+            batchSize = 50; // faster scan for burst mode
+        } else {
+            batchSize = 0;
+        }
+
+        if (batchSize > 0 && controller.isScanning()) {
+            List<double[]> batch = controller.getBatch(batchSize);
+            if (batch != null && !batch.isEmpty()) {
+                performScan(batch);
+            }
+        }
+
+        if (MinedarMod.config().minimapVisible) {
+            minimap.decayStep();
+        }
+        if (saveCooldown > 0) {
+            saveCooldown--;
+            if (saveCooldown == 0) {
+                saveToDisk();
+            }
+        }
+    }
         }
         if (saveCooldown > 0) {
             saveCooldown--;

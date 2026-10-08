@@ -10,6 +10,11 @@ final class ScanStorage {
     private ScanStorage() {
     }
 
+static Path pathFor(WorldIdentity identity) {
+        return org.neoforged.api.Forge.getConfigDirectory()
+                .resolve(\"minedar\")
+                .resolve(identity.id());
+    }
     static Path pathFor(WorldIdentity identity) {
         return FMLPaths.GAMEDIR.get()
                 .resolve("minedar")

@@ -10,6 +10,13 @@ final class ScanStorage {
     private ScanStorage() {
     }
 
+static Path pathFor(WorldIdentity identity) {
+        return net.fabricmc.loader.api.FabricLoader.getInstance()
+                .getConfigDir()
+                .toAbsolutePath()
+                .resolve(\"minedar\")
+                .resolve(identity.id());
+    }
     static Path pathFor(WorldIdentity identity) {
         return FabricLoader.getInstance().getGameDir()
                 .resolve("minedar")

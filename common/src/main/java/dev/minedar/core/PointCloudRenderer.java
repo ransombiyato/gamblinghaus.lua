@@ -4,6 +4,115 @@ import java.util.Map;
 
 /**
  * Builds the camera-facing dot quads for the LiDAR point cloud (sections 8,
+ * 74-75). The geometry maths lives in
+ * {@link PointCloudRenderer}; this class only sets up the graphics state and
+ * feeds the emitted camera-relative quads into a single vertex buffer.
+ *
+ * <p>The point cloud is drawn at {@code AFTER_LEVEL}, once the level render has
+ * returned. That is deliberate: every earlier stage ({@code AFTER_SKY} through
+ * {@code AFTER_WEATHER}) is dispatched from <em>inside</em>
+ * {@code LevelRenderer.renderLevel}, which is cancelled while LiDAR hides the
+ * world, so those stages never fire in LiDAR mode. {@code AFTER_LEVEL} is
+ * dispatched by {@code GameRenderer} after that call returns, so it is the one
+ * stage that always runs.
+ *
+ * <p>The model-view matrix is rebuilt from the camera rather than reused from
+ * the level render: by the time {@code AFTER_LEVEL} runs the level's model-view
+ * has been popped, so the point cloud applies the camera view transform itself
+ * and uploads world-relative positions, exactly as {@code LevelRenderer} does for
+ * terrain. This keeps the dots in world space regardless of what the level pass
+ * left on the stack.
+ * </p>
+ */
+public final class PointCloudRenderer {
+
+    // ... existing constants and methods ...
+
+    /**
+     * Emits every visible dot as a camera-relative quad. Returns the number of
+     * dots emitted, which callers use to skip buffer work when nothing is
+     * visible. Only sections the client currently holds are walked.
+     */
+    public static int forEachVisibleDot(Map<Long, PointCloudSection> cloud,
+                                        double camX, double camY, double camZ,
+                                        double maxDistance,
+                                        double camRightX, double camRightZ,
+                                        QuadSink sink) {
+        if (cloud == null || cloud.size() == 0) {
+            return 0;
+        }
+        double[] right = screenRight(camRightX, camRightZ);
+        float rx = (float) right[0];
+        float rz = (float) right[1];
+
+        // Cap this frame's work. When the cloud exceeds the budget, stride
+        // through the flattened point list so the visible dots are spread evenly
+        // rather than drawn from whichever sections happen to come first.
+        long total = pointCount(cloud);
+        if (total <= 0) {
+            return 0;
+        }
+        long step = Math.max(1, (total + MAX_DOTS_PER_FRAME - 1) / MAX_DOTS_PER_FRAME);
+
+        int emitted = 0;
+        long index = 0;
+        for (Map.Entry<Long, PointCloudSection> entry : cloud.entrySet()) {
+            long key = entry.getKey();
+            int sx = signExtend((int) ((key >> 42) & 0x3FFFFF), 22);
+            int sy = signExtend((int) ((key >> 22) & 0xFFFFF), 20);
+            int sz = signExtend((int) (key & 0x3FFFFF), 22);
+
+            PointCloudSection section = entry.getValue();
+            int n = section.size();
+
+            double baseX = sx << 4;
+            double baseY = sy << 4;
+            double baseZ = sz << 4;
+            if (!sectionVisible(baseX, baseY, baseZ, camX, camY, camZ, maxDistance)) {
+                index += n;
+                continue;
+            }
+
+            long[] raw = section.raw();
+            for (int i = 0; i < n; i++, index++) {
+                if (index % step != 0) {
+                    continue;
+                }
+                long p = raw[i];
+                float wx = (float) (baseX + PointCloudSection.localX(p) + 0.5) - (float) camX;
+                float wy = (float) (baseY + PointCloudSection.localY(p) + 0.5) - (float) camY;
+                float wz = (float) (baseZ + PointCloudSection.localZ(p) + 0.5) - (float) camZ;
+
+                float intensity = intensityScale(PointCloudSection.intensity(p));
+                // Perspective divide keeps the projected dot size constant: the
+                // quad's world extent grows with distance so it stays the same
+                // number of pixels near and far.
+                float dist = (float) Math.sqrt(wx * wx + wy * wy + wz * wz);
+                float h = DOT_SIZE * (0.6f + 0.8f * intensity) * Math.max(1.0f, dist);
+
+                sink.quad(wx, wy, wz, rx, rz, h, intensity, PointCloudSection.rgb(p));
+                emitted++;
+            }
+        }
+        return emitted;
+    }
+
+    private static long pointCount(Map<Long, PointCloudSection> cloud) {
+        long total = 0;
+        for (PointCloudSection s : cloud.values()) {
+            total += s.size();
+        }
+        return total;
+    }
+
+    // ... rest of the class unchanged ...
+}
+package dev.minedar.core;
+
+import java.util.Map;
+
+/**
+ * Builds the camera-facing dot quads for the LiDAR point cloud (sections 8,
  * 74-75). This is the loader-independent half of point rendering: it walks the
  * spatial store, culls sections beyond the scan distance, and emits each visible
  * dot's four corners relative to the camera. The loader adapter supplies the

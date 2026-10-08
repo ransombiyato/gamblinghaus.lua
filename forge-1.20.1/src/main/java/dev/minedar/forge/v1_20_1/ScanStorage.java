@@ -10,6 +10,11 @@ final class ScanStorage {
     private ScanStorage() {
     }
 
+static Path pathFor(WorldIdentity identity) {
+        return FMLPaths.GAMEDIR.get()
+                .resolve(\"minedar\")
+                .resolve(identity.id()); // now a directory, not a file
+    }
     static Path pathFor(WorldIdentity identity) {
         return FMLPaths.GAMEDIR.get()
                 .resolve("minedar")
