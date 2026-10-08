@@ -53,7 +53,7 @@ class PointCloudRendererTest {
     void emptyStoreEmitsNothing() {
         SpatialChunkStore store = new SpatialChunkStore();
         Capture cap = new Capture();
-        int n = PointCloudRenderer.forEachVisibleDot(store, 0, 0, 0, 64, 1, 0, cap);
+        int n = PointCloudRenderer.forEachVisibleDot(store.view(), 0, 0, 0, 64, 1, 0, cap);
         assertEquals(0, n);
         assertEquals(0, cap.quads);
     }
@@ -65,7 +65,7 @@ class PointCloudRendererTest {
 
         Capture cap = new Capture();
         // Camera at the origin, right vector = +X.
-        int n = PointCloudRenderer.forEachVisibleDot(store, 0, 0, 0, 64, 1, 0, cap);
+        int n = PointCloudRenderer.forEachVisibleDot(store.view(), 0, 0, 0, 64, 1, 0, cap);
         assertEquals(1, n);
         assertEquals(1, cap.quads);
         assertEquals(0xFF0000, cap.colours.get(0));
@@ -94,7 +94,7 @@ class PointCloudRendererTest {
         store.addBlock(0, 0, 0, 0x00FF00, 255);
 
         Capture cap = new Capture();
-        PointCloudRenderer.forEachVisibleDot(store, 0, 0, 0, 64, 0.7071, 0.7071, cap);
+        PointCloudRenderer.forEachVisibleDot(store.view(), 0, 0, 0, 64, 0.7071, 0.7071, cap);
 
         float cx = (cap.cornerX(0, 0) + cap.cornerX(0, 2)) / 2.0f;
         float cy = (cap.cornerY(0, 0) + cap.cornerY(0, 2)) / 2.0f;
@@ -126,7 +126,7 @@ class PointCloudRendererTest {
         }
 
         Capture cap = new Capture();
-        int n = PointCloudRenderer.forEachVisibleDot(store, 0, 0, 0, 100_000, 1, 0, cap);
+        int n = PointCloudRenderer.forEachVisibleDot(store.view(), 0, 0, 0, 100_000, 1, 0, cap);
         assertTrue(n <= PointCloudRenderer.MAX_DOTS_PER_FRAME,
                 "emitted " + n + " dots, budget is " + PointCloudRenderer.MAX_DOTS_PER_FRAME);
         assertTrue(n > 0);
@@ -140,7 +140,7 @@ class PointCloudRendererTest {
         store.addBlock(200, 0, 0, 0xFFFFFF, 255);        // section (12,0,0)
 
         Capture cap = new Capture();
-        int n = PointCloudRenderer.forEachVisibleDot(store, 0, 0, 0, 32, 1, 0, cap);
+        int n = PointCloudRenderer.forEachVisibleDot(store.view(), 0, 0, 0, 32, 1, 0, cap);
         assertEquals(1, n, "only the near section is within 32 blocks");
     }
 

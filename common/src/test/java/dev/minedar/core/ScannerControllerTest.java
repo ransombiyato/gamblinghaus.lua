@@ -2,6 +2,7 @@ package dev.minedar.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import org.junit.jupiter.api.Test;
@@ -44,7 +45,7 @@ class ScannerControllerTest {
 
         c.equip(); // re-equip must cancel and reset
         assertEquals(ScanRange.DEFAULT_RADIUS, c.range().radius(), 1e-9);
-        assertFalse(c.isContinuousScanning());
+        assertFalse(c.isScanning());
     }
 
     @Test
@@ -53,9 +54,10 @@ class ScannerControllerTest {
         c.enableLidar();
         c.equip();
         c.startContinuousScan();
+        c.tick();
+        assertTrue(c.isScanning());
         c.unequip();
-        assertFalse(c.isContinuousScanning());
-        assertEquals(0, c.tick());
+        assertFalse(c.isScanning());
     }
 
     @Test
@@ -63,11 +65,14 @@ class ScannerControllerTest {
         ScannerController c = new ScannerController();
         c.equip();
         c.startContinuousScan(); // lidar off -> ignored
-        assertEquals(0, c.tick());
+        c.tick();
+        assertFalse(c.isScanning());
 
         c.enableLidar();
         c.startContinuousScan();
-        assertEquals(1, c.tick());
+        c.tick();
+        assertTrue(c.isScanning());
+        assertEquals(ScannerController.ScanMode.CONTINUOUS, c.mode());
     }
 
     @Test
@@ -76,9 +81,10 @@ class ScannerControllerTest {
         c.enableLidar();
         c.equip();
         c.startContinuousScan();
+        c.tick();
         c.disableLidar(true);
-        assertEquals(0, c.tick());
-        assertFalse(c.isContinuousScanning());
+        c.tick();
+        assertFalse(c.isScanning());
     }
 
     @Test
@@ -107,8 +113,13 @@ class ScannerControllerTest {
         c.enableLidar();
         c.equip();
         c.requestBurstScan();
-        assertTrue(c.tick() > 0);
-        assertEquals(0, c.tick()); // consumed, no continuous scan active
+        c.tick();
+        assertTrue(c.isScanning());
+        assertEquals(ScannerController.ScanMode.BURST, c.mode());
+        assertNotNull(c.getBatch(50));
+        // No continuous scan: after the burst is consumed the controller idles.
+        c.tick();
+        assertEquals(ScannerController.ScanMode.IDLE, c.mode());
     }
 
     @Test
