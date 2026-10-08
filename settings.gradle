@@ -6,6 +6,9 @@ pluginManagement {
         maven { name = 'NeoForged'; url = 'https://maven.neoforged.net/releases' }
         maven { name = 'MinecraftForge'; url = 'https://maven.minecraftforge.net/' }
         maven { name = 'Mojang'; url = 'https://libraries.minecraft.net/' }
+        // MixinGradle + the Mixin annotation processor, needed by the Forge
+        // modules to emit a refmap (Forge runs on SRG member names).
+        maven { name = 'Sponge'; url = 'https://repo.spongepowered.org/repository/maven-public/' }
     }
 }
 

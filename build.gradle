@@ -2,7 +2,7 @@
 // here, so `gradlew :common:test` works on any machine with a JDK and network.
 allprojects {
     group = 'dev.minedar'
-    version = '0.2.0'
+    version = '0.2.1'
 }
 
 subprojects {

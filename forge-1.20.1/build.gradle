@@ -3,6 +3,10 @@ plugins {
     id 'idea'
     id 'maven-publish'
     id 'net.minecraftforge.gradle' version '[6.0,6.2)'
+    // Generates the mixin refmap. Forge runs on SRG member names at runtime, so
+    // without this the mixin JSON's "refmap" entry points at a file that was
+    // never produced and every @Inject fails with "No refMap loaded".
+    id 'org.spongepowered.mixin' version '0.7.+'
 }
 
 version = mod_version
@@ -18,7 +22,6 @@ java.toolchain.languageVersion = JavaLanguageVersion.of(17)
 minecraft {
     mappings channel: mapping_channel, version: mapping_version
     copyIdeResources = true
-
     runs {
         configureEach {
             workingDirectory project.file('run')
@@ -56,6 +59,13 @@ repositories {
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    annotationProcessor "org.spongepowered:mixin:0.8.5:processor"
+}
+
+// Point MixinGradle at the configs so it writes the refmap and remaps it to SRG.
+mixin {
+    add sourceSets.main, "minedar.refmap.json"
+    config "minedar.mixins.json"
 }
 
 // The shared core is pure Java with no Minecraft dependency, so we compile it
