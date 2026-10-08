@@ -91,9 +91,13 @@ public final class PersistentScanStore {
     }
 
     private static PointCloudSection decodeSingleSection(byte[] file) throws IOException {
-        try (DataInputStream in = new DataInputStream(new ByteArrayInputStream(file))) {
+        try (DataInputStream in = new DataInputStream(
+                new GZIPInputStream(new ByteArrayInputStream(file)))) {
             in.readLong(); // section key (positional)
             int points = in.readInt();
+            if (points < 0 || points > 16 * 1024 * 1024) {
+                throw new CorruptStoreException("implausible section point count " + points);
+            }
             PointCloudSection section = new PointCloudSection(points);
             for (int i = 0; i < points; i++) {
                 section.add(in.readLong());

@@ -29,7 +29,7 @@ public final class MinedarClient {
     private final ScanEngine engine = new ScanEngine(materials.rules());
     private final MinimapDensityStore minimap = new MinimapDensityStore(32, 1.0);
     private final PeerScannerRegistry peers = new PeerScannerRegistry();
-    private final NeoForgeWorldSampler sampler = new NeoForgeWorldSampler();
+    private final ForgeWorldSampler sampler = new ForgeWorldSampler();
 
     private CachedSpatialStore pointCloud;
     private WorldIdentity currentWorld;

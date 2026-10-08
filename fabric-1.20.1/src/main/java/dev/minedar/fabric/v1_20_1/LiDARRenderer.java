@@ -71,7 +71,6 @@ public final class LiDARRenderer {
         RenderSystem.setShader(GameRenderer::getPositionColorShader);
 
 Tesselator tess = Tesselator.getInstance();
-        Tesselator tess = Tesselizer.getInstance();
         BufferBuilder bb = tess.getBuilder();
         bb.begin(VertexFormat.Mode.QUADS, DefaultVertexFormat.POSITION_COLOR);
 
