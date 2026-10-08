@@ -52,6 +52,26 @@ launching it. This is the required way to playtest the mod.
 - CI: `.github/workflows/termview.yml`. It was briefly deleted when the repo was
   repurposed for MiNEDAR; keep it — it is not disposable.
 
+### Driving a live client under Xvfb (this container)
+
+- The client runs headless under `Xvfb :99 -screen 0 1280x720x24`. Launch it with
+  the software-GL env or the render thread dies on startup:
+  `JAVA_HOME=/workspace/toolchain/jdk-17.0.13+11`, `DISPLAY=:99`,
+  `LIBGL_ALWAYS_SOFTWARE=1`, `MESA_GL_VERSION_OVERRIDE=3.2`,
+  `MESA_GLSL_VERSION_OVERRIDE=150`, then `./gradlew :forge-1.20.1:runClient
+  --no-daemon` (log to a file; the gradle wrapper may need `--offline`).
+- Keys and clicks go in via XTEST, so `xdotool key --clearmodifiers g` (plain,
+  **without** `--window`) and a real `mousemove` reach the game; `--window` uses
+  XSendEvent and the GLFW client ignores it. A click only registers when the
+  pointer *moves onto* the target while the window has focus — park the pointer
+  at an inert spot first, then move onto the button, then click.
+- Verify state by pixels, not by the awkward `termview` interactive menu: diff
+  frames with Pillow/numpy, and read `run/logs/latest.log`, `run/options.txt`
+  (keybind registration) and `run/config/minedar.json`. `jstack` the render
+  thread to tell "hung in our code" from "slow under software GL".
+- On this CPU-only host, drawing the full accumulated cloud is slow: keep
+  LiDAR test setups near a small scanned region, out of the sky.
+
 ## Key conventions
 
 - **All LiDAR logic belongs in `common` (package `dev.minedar.core`)**, which has

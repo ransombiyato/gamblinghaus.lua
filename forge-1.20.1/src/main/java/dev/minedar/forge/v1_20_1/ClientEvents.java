@@ -1,8 +1,11 @@
 package dev.minedar.forge.v1_20_1;
 
+import com.mojang.blaze3d.systems.RenderSystem;
 import dev.minedar.core.ScannerController;
 import dev.minedar.core.ShaderStateManager;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.renderer.FogRenderer;
+import net.minecraft.client.renderer.GameRenderer;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.RenderGuiEvent;
 import net.minecraftforge.client.event.RenderGuiOverlayEvent;
@@ -27,21 +30,43 @@ public final class ClientEvents {
     private ClientEvents() {
     }
 
+    /**
+     * Draws the point cloud once the level render has returned. {@code AFTER_LEVEL}
+     * is the only stage that still fires while LiDAR hides the world: the earlier
+     * stages are dispatched from inside {@code LevelRenderer.renderLevel}, which is
+     * cancelled in LiDAR mode. Because the level pass is skipped, this handler also
+     * reproduces the two frame-setup steps it would otherwise have done — clearing
+     * the colour buffer and clearing the fog — so the hidden world is replaced by
+     * the LiDAR cloud rather than the previous frame (section 4).
+     */
     @SubscribeEvent
     public static void onRenderLevelStage(RenderLevelStageEvent event) {
-        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_ENTITIES) {
+        if (event.getStage() != RenderLevelStageEvent.Stage.AFTER_LEVEL) {
             return;
         }
         ScannerController c = MinedarClient.get().controller();
         if (!c.isLidarOn()) {
             return;
         }
+
+        Minecraft mc = Minecraft.getInstance();
+        GameRenderer gameRenderer = mc.gameRenderer;
+
+        // Match the level pass's own setup so the cloud is drawn over a clean frame.
+        FogRenderer.setupColor(event.getCamera(), event.getPartialTick(), mc.level,
+                mc.options.getEffectiveRenderDistance(),
+                gameRenderer.getDarkenWorldAmount(event.getPartialTick()));
+        FogRenderer.levelFogColor();
+        RenderSystem.clear(16640, Minecraft.ON_OSX);
+
         var cam = event.getCamera();
         float yawRad = (float) Math.toRadians(cam.getYRot());
         double rightX = Math.cos(yawRad);
         double rightZ = Math.sin(yawRad);
-        RENDERER.render(event.getPoseStack(), cam, MinedarMod.config().scanDistance,
-                rightX, rightZ);
+        RENDERER.render(cam, event.getProjectionMatrix(),
+                MinedarMod.config().scanDistance, rightX, rightZ);
+
+        FogRenderer.setupNoFog();
     }
 
     @SubscribeEvent
