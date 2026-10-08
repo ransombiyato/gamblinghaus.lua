@@ -72,8 +72,10 @@ class PointCloudRendererTest {
 
         // The dot centre is the block centre (3.5, 4.5, 5.5); with the screen
         // right along +X the four corners straddle it by the dot half-extent,
-        // which grows with intensity (255 -> scale 1, so 0.6 + 0.8).
-        float h = PointCloudRenderer.DOT_SIZE * 1.4f;
+        // which grows with intensity (255 -> scale 1, so 0.6 + 0.8) and with the
+        // dot's distance from the camera (here sqrt(3.5^2 + 4.5^2 + 5.5^2)).
+        float dist = (float) Math.sqrt(3.5 * 3.5 + 4.5 * 4.5 + 5.5 * 5.5);
+        float h = PointCloudRenderer.DOT_SIZE * 1.4f * dist;
         assertEquals(3.5f, cap.xs.get(0), 1e-5f);
         assertEquals(4.5f, cap.ys.get(0), 1e-5f);
         assertEquals(5.5f, cap.zs.get(0), 1e-5f);

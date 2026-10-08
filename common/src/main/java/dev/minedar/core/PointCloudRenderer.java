@@ -16,8 +16,13 @@ import java.util.Map;
  */
 public final class PointCloudRenderer {
 
-    /** Half-extent of a dot quad in blocks. Small and GMod-like (section 8). */
-    public static final float DOT_SIZE = 0.014f;
+    /**
+     * Screen-space half-extent of a dot, expressed as world units at one block
+     * from the camera. Scaling by the dot's distance keeps the projected size
+     * constant, so a dot is equally sized wherever it sits in the view and a
+     * distant scan still reads as a cloud instead of vanishing (section 8).
+     */
+    public static final float DOT_SIZE = 0.006f;
     /** Floor so a heavily transmitted dot stays faintly visible. */
     public static final float MIN_INTENSITY = 0.15f;
 
@@ -129,7 +134,11 @@ public final class PointCloudRenderer {
                 float wz = (float) (baseZ + PointCloudSection.localZ(p) + 0.5) - (float) camZ;
 
                 float intensity = intensityScale(PointCloudSection.intensity(p));
-                float h = DOT_SIZE * (0.6f + 0.8f * intensity);
+                // Perspective divide keeps the projected dot size constant: the
+                // quad's world extent grows with distance so it stays the same
+                // number of pixels near and far.
+                float dist = (float) Math.sqrt(wx * wx + wy * wy + wz * wz);
+                float h = DOT_SIZE * (0.6f + 0.8f * intensity) * Math.max(1.0f, dist);
 
                 sink.quad(wx, wy, wz, rx, rz, h, intensity, PointCloudSection.rgb(p));
                 emitted++;
