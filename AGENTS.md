@@ -91,6 +91,17 @@ launching it. This is the required way to playtest the mod.
 - **No audio assets are ever generated** (spec section 52). Use `SoundEventHooks`.
 - Point appearance, scan speed and minimap zoom are intentionally NOT
   configurable.
+- **Forge 1.20.1 mixins need a generated refmap; 1.21.1/NeoForge do not.**
+  Forge 1.20.1 still reobfuscates the jar to SRG member names (`m_280421_`),
+  so `minedar.mixins.json` must reference a refmap that actually exists or the
+  client dies at startup with `InvalidInjectionException ... No refMap loaded`.
+  The MDK relies on the MixinGradle plugin to write it, so `forge-1.20.1`
+  applies `org.spongepowered.mixin` and adds
+  `annotationProcessor "org.spongepowered:mixin:0.8.5:processor"` plus a
+  `mixin { add sourceSets.main, "minedar.refmap.json"; config ... }` block.
+  Forge dropped SRG at runtime in 1.20.2, so `forge-1.21.1` and
+  `neoforge-1.21.1` run on official Mojang names, have **no** `reobf` task, and
+  must **not** declare a refmap. Fabric has its own working refmap.
 - **Client key-mapping registration goes on the MOD event bus.** Forge fires
   `RegisterKeyMappingsEvent` only there; `@EventBusSubscriber` auto-subscribes to
   the game bus, so a handler for it silently never runs and *no* keybinds appear
