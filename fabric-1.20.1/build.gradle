@@ -1,0 +1,73 @@
+plugins {
+    id 'fabric-loom' version '1.7.4'
+    id 'maven-publish'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = mod_id
+}
+
+// Minecraft 1.20.1 targets Java 17.
+java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+
+loom {
+    mixin {
+        // Must match the "refmap" key in minedar.mixins.json.
+        defaultRefmapName = "minedar.refmap.json"
+    }
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    minecraft "com.mojang:minecraft:${minecraft_version}"
+    // Official Mojang mappings keep the shared core and loader glue on the same
+    // Minecraft names as the Forge adapter, so only the loader-specific event
+    // wiring differs between the two.
+    mappings loom.officialMojangMappings()
+    modImplementation "net.fabricmc:fabric-loader:${loader_version}"
+    modImplementation "net.fabricmc.fabric-api:fabric-api:${fabric_api_version}"
+}
+
+// The shared core is pure Java with no Minecraft dependency, so we compile it
+// straight into this module. That keeps the built jar fully self-contained and
+// avoids loader-specific jar-in-jar plumbing entirely.
+sourceSets.main.java.srcDir file("${projectDir}/../common/src/main/java")
+
+processResources {
+    inputs.property "version", project.version
+    filesMatching("fabric.mod.json") {
+        expand "version": project.version
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    manifest {
+        attributes([
+                'Specification-Title'   : mod_id,
+                'Specification-Vendor'  : mod_authors,
+                'Specification-Version' : '1',
+                'Implementation-Title'  : project.name,
+                'Implementation-Version': project.version,
+                'Implementation-Vendor' : mod_authors
+        ])
+    }
+}
+
+publishing {
+    publications {
+        register('mavenJava', MavenPublication) {
+            artifact remapJar
+        }
+    }
+    repositories {
+        maven {
+            url "file://${project.projectDir}/mcmodsrepo"
+        }
+    }
+}

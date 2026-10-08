@@ -22,15 +22,19 @@ project, and must stay in the tree.
 ```
 common/          pure-Java core, no Minecraft dependency, fully unit-tested
 forge-1.20.1/    Forge adapter (primary target)
-forge-1.21.1/    Forge adapter (planned)
+forge-1.21.1/    Forge adapter
 forge-1.21.11/   Forge adapter (planned)
-fabric-*/        Fabric adapters (planned)
+fabric-1.20.1/   Fabric adapter (compiles; builds as its own Gradle project, see below)
+fabric-*/        other Fabric adapters (planned)
 neoforge-*/      NeoForge adapters (planned; NeoForge has no 1.20.1)
 tools/termview/  Python: the AI's screen-to-terminal playtest tool (see below)
 ```
 
 `settings.gradle` only includes loader dirs that actually exist, so partial
-checkouts configure cleanly.
+checkouts configure cleanly. Fabric Loom is intentionally *absent* from the
+root build: Loom and ForgeGradle cannot share one buildscript classloader
+(ForgeGradle's Gson 2.9.1 makes Loom throw on Java 17), so every Fabric adapter
+is a standalone Gradle project invoked with `./gradlew -p fabric-1.20.1 build`.
 
 ## Playtesting tool: `tools/termview`
 

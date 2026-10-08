@@ -18,11 +18,15 @@ plugins {
 rootProject.name = 'minedar'
 
 include 'common'
+
 // Loader adapters. Each is added as its build script is written, so partial
-// checkouts still configure cleanly.
+// checkouts still configure cleanly. Fabric Loom is deliberately absent: its
+// buildscript shares the Gradle classloader with ForgeGradle, whose Gson 2.9.1
+// dependency makes Loom's reflective metadata parsing throw on Java 17. Fabric
+// therefore builds as its own standalone project (see fabric-1.20.1/settings.gradle).
 for (adapter in ['forge-1.20.1', 'forge-1.21.1', 'forge-1.21.11',
                  'neoforge-1.21.1', 'neoforge-1.21.11',
-                 'fabric-1.20.1', 'fabric-1.21.1', 'fabric-1.21.11']) {
+                 'fabric-1.21.1', 'fabric-1.21.11']) {
     def dir = file(adapter)
     if (dir.isDirectory()) {
         include adapter
