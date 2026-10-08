@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "dev.minedar.forge.v1_21_1.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "refmap": "minedar.refmap.json",
+  "client": [
+    "LevelRendererMixin",
+    "GuiMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
