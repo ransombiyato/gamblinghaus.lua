@@ -63,7 +63,8 @@ jobs:
           Xvfb :99 -screen 0 1280x720x24 &
           sleep 3
           cd server
-          (java -Xmx2G -jar server.jar nogui > server.log 2>&1 &)
+          mkfifo cmd.fifo
+          (tail -f cmd.fifo | java -Xmx2G -jar server.jar nogui > server.log 2>&1 &)
           echo "waiting for the server to be ready..."
           for i in $(seq 1 60); do
             if grep -q 'Done (' server.log 2>/dev/null; then break; fi
@@ -78,7 +79,7 @@ jobs:
           export MESA_GL_VERSION_OVERRIDE=3.2
           export MESA_GLSL_VERSION_OVERRIDE=150
           (timeout 900 ./gradlew :forge-1.20.1:runClient --console=plain \
-              --args='--quickPlayMultiplayer localhost:25565' > client.log 2>&1 &)
+              --args='--username Dev --quickPlayMultiplayer localhost:25565' > client.log 2>&1 &)
           echo "waiting for the client to join the world..."
           for i in $(seq 1 120); do
             if grep -q 'MiNEDAR tracking world' client.log 2>/dev/null; then break; fi
@@ -86,12 +87,25 @@ jobs:
           done
           grep -i 'MiNEDAR loaded\|MiNEDAR tracking world' client.log || true
 
+      - name: Light the world and aim the camera at the ground
+        run: |
+          cd server
+          # Give the client a moment to fully register before scripting the server.
+          sleep 15
+          printf 'op Dev\ntime set day\ngamerule doDaylightCycle false\nweather clear\n' > cmd.fifo
+          sleep 3
+          # Keep the operator's spawn position but pitch the camera down so the
+          # scanner sweeps close terrain instead of empty sky.
+          printf 'tp Dev ~ ~ ~ 0 55\n' > cmd.fifo
+          sleep 3
+          tail -6 server.log
+
       - name: Drive the scanner and capture screenshots
         run: |
           export DISPLAY=:99
           mkdir -p screenshots
           # Let the world settle and make sure the window has focus.
-          sleep 20
+          sleep 5
           WID=$(xdotool search --name Minecraft | tail -1)
           echo "window=$WID"
           xdotool windowactivate "$WID" 2>/dev/null || true
@@ -99,21 +113,26 @@ jobs:
           xdotool mousemove 640 360
           sleep 2
           import -window "$WID" screenshots/00_baseline.png
+          # Minimap is on by default; capture it, then verify the M toggle hides it.
+          import -window "$WID" screenshots/05_minimap_on.png
+          xdotool key --clearmodifiers m
+          sleep 2
+          import -window "$WID" screenshots/06_minimap_off.png
+          xdotool key --clearmodifiers m
+          sleep 2
           # Toggle LiDAR on and let it render the (still dot-free) view.
           xdotool key --clearmodifiers g
           sleep 3
           import -window "$WID" screenshots/01_lidar_on.png
-          # Continuous scan: hold the left button while screenshotting ~1s apart.
+          # Continuous scan: hold the left button and sample the view rapidly so
+          # the short accumulation burst is actually captured.
           xdotool mousedown 1
-          for i in $(seq 1 6); do
-            sleep 1
-            import -window "$WID" "screenshots/1${i}_scan.png"
+          for i in $(seq 1 10); do
+            import -window "$WID" "screenshots/$(printf '%02d' $i)_scan.png"
+            sleep 0.4
           done
           xdotool mouseup 1
-          # Minimap + burst scan on the right button.
-          xdotool key --clearmodifiers m
-          sleep 1
-          import -window "$WID" screenshots/20_minimap.png
+          # Burst scan on the right button.
           xdotool mousedown 3
           sleep 2
           xdotool mouseup 3
@@ -135,11 +154,12 @@ jobs:
           def load(p):
               return np.asarray(Image.open(p).convert("RGB"), dtype=np.int16)
 
-          frames = sorted(glob.glob("screenshots/1*_scan.png"))
+          frames = sorted(glob.glob("screenshots/*_scan.png"))
           print("scan frames:", frames)
           if len(frames) < 2:
               print("FAIL: fewer than two scan frames captured")
               sys.exit(1)
+
           prev = None
           changed = 0
           for f in frames:
@@ -150,10 +170,42 @@ jobs:
                   if diff > 500:
                       changed += 1
               prev = img
+
+          # The finished scan must also differ clearly from the empty LiDAR view.
+          lidar_on = load("screenshots/01_lidar_on.png")
+          final = load(frames[-1])
+          grew = int((np.abs(final - lidar_on).sum(2) > 40).sum())
+          print("final scan vs empty LiDAR view:", grew)
+
           with open("runtime-summary.txt", "w") as out:
               out.write("progressively-changing scan frames: %d\n" % changed)
+              out.write("final-vs-empty changed pixels: %d\n" % grew)
           if changed < 1:
-              print("FAIL: LiDAR scan did not change the rendered view")
+              print("FAIL: LiDAR scan did not change the view progressively")
+              sys.exit(1)
+          if grew < 2000:
+              print("FAIL: finished scan does not differ from the empty LiDAR view")
+              sys.exit(1)
+
+          # Minimap toggle must change the corner of the screen.
+          on = load("screenshots/05_minimap_on.png")[:140, :140]
+          off = load("screenshots/06_minimap_off.png")[:140, :140]
+          mini = int((np.abs(on - off).sum(2) > 40).sum())
+          print("minimap toggle corner changed pixels:", mini)
+          with open("runtime-summary.txt", "a") as out:
+              out.write("minimap-toggle changed pixels: %d\n" % mini)
+          if mini < 200:
+              print("FAIL: minimap toggle did not change the corner")
+              sys.exit(1)
+
+          # Turning LiDAR back off must restore the world view.
+          off_lidar = load("screenshots/30_lidar_off.png")
+          restored = int((np.abs(off_lidar - lidar_on).sum(2) > 40).sum())
+          print("lidar off vs lidar on changed pixels:", restored)
+          with open("runtime-summary.txt", "a") as out:
+              out.write("lidar-off-vs-on changed pixels: %d\n" % restored)
+          if restored < 2000:
+              print("FAIL: disabling LiDAR did not restore the world")
               sys.exit(1)
           print("OK: scan rendered progressive change")
           PY
