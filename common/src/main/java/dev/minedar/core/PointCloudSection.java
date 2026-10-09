@@ -21,6 +21,14 @@ public final class PointCloudSection {
 
     private long[] points;
     private int count;
+    /**
+     * Membership set of packed points already stored. Continuous scanning
+     * re-casts the same cone every pass, so without dedup the same dot would be
+     * appended indefinitely and a section would grow without bound while the
+     * trigger is held. A section holds at most a few thousand distinct dots, so
+     * this stays small; it is created lazily to keep tiny sections cheap.
+     */
+    private java.util.HashSet<Long> index;
 
     public PointCloudSection() {
         this(INITIAL_CAPACITY);
@@ -61,13 +69,32 @@ public final class PointCloudSection {
         return (int) ((packed >>> 36) & 0xFF);
     }
 
-    public void add(long packed) {
+    /** Adds a packed point, ignoring an exact duplicate. */
+    public boolean add(long packed) {
+        if (count > 64) {
+            if (index == null) {
+                index = new java.util.HashSet<>(count * 2);
+                for (int i = 0; i < count; i++) {
+                    index.add(points[i]);
+                }
+            }
+            if (!index.add(packed)) {
+                return false;
+            }
+        } else {
+            for (int i = 0; i < count; i++) {
+                if (points[i] == packed) {
+                    return false;
+                }
+            }
+        }
         if (count == points.length) {
             long[] grown = new long[points.length * 2];
             System.arraycopy(points, 0, grown, 0, count);
             points = grown;
         }
         points[count++] = packed;
+        return true;
     }
 
     public int size() {

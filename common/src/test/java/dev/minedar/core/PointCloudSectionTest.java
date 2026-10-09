@@ -1,6 +1,7 @@
 package dev.minedar.core;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -57,5 +58,31 @@ class PointCloudSectionTest {
         PointCloudSection s = new PointCloudSection();
         assertThrows(IndexOutOfBoundsException.class, () -> s.get(0));
         assertTrue(s.isEmpty());
+    }
+
+    @Test
+    void ignoresExactDuplicatePoints() {
+        PointCloudSection s = new PointCloudSection();
+        long p = PointCloudSection.pack(3, 4, 5, 0x00FF00, 128);
+        assertTrue(s.add(p));
+        assertFalse(s.add(p));
+        assertEquals(1, s.size());
+    }
+
+    @Test
+    void dedupHoldsAcrossTheArrayToSetTransition() {
+        PointCloudSection s = new PointCloudSection();
+        // Cross the 64-point threshold where the membership set is built.
+        for (int i = 0; i < 200; i++) {
+            s.add(PointCloudSection.pack(i % 16, (i / 16) % 16, 0, 0xFFFFFF, i % 256));
+        }
+        int distinct = s.size();
+        for (int i = 0; i < 200; i++) {
+            assertFalse(s.add(PointCloudSection.pack(i % 16, (i / 16) % 16, 0, 0xFFFFFF, i % 256)));
+        }
+        assertEquals(distinct, s.size());
+        // A genuinely new point is still accepted after dedup.
+        assertTrue(s.add(PointCloudSection.pack(15, 15, 15, 0x123456, 7)));
+        assertEquals(distinct + 1, s.size());
     }
 }

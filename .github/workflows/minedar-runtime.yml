@@ -1,10 +1,8 @@
 # MiNEDAR runtime test workflow.
 #
-# The Cline GitHub credential (cline-cloud[bot]) lacks the `workflows`
-# permission, so this file could not be committed to .github/workflows/ from the
-# agent environment. To enable real client runtime testing, copy this file to
-# .github/workflows/minedar-runtime.yml (a user with workflow permission can do
-# this, or run `gh workflow run` once it is in place).
+# Beyond a load smoke test, this starts a throwaway vanilla server, launches the
+# built Forge client under Xvfb against it, drives the scanner with xdotool and
+# captures screenshots so the LiDAR behaviour is actually exercised in CI.
 name: MiNEDAR Runtime
 
 on:
@@ -14,8 +12,9 @@ on:
 
 jobs:
   runtime:
-    name: Forge 1.20.1 runtime smoke test
+    name: Forge 1.20.1 runtime scan test
     runs-on: ubuntu-latest
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
 
@@ -27,34 +26,145 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
-      - name: Install Xvfb and input tooling
+      - name: Install Xvfb, input and capture tooling
         run: |
           sudo apt-get update
-          sudo apt-get install -y xvfb xdotool x11-utils libgl1-mesa-dri
+          sudo apt-get install -y xvfb xdotool x11-utils imagemagick libgl1-mesa-dri python3-numpy python3-pil
+
+      - name: Download and configure the test server
+        run: |
+          mkdir -p server
+          python3 - <<'PY'
+          import json, urllib.request
+          meta = json.load(urllib.request.urlopen(
+              "https://piston-meta.mojang.com/mc/game/version_manifest_v2.json"))
+          ver = next(v for v in meta["versions"] if v["id"] == "1.20.1")
+          pkg = json.load(urllib.request.urlopen(ver["url"]))
+          url = pkg["downloads"]["server"]["url"]
+          print("server url", url)
+          urllib.request.urlretrieve(url, "server/server.jar")
+          PY
+          echo "eula=true" > server/eula.txt
+          cat > server/server.properties <<'PROP'
+          online-mode=false
+          level-type=minecraft\:flat
+          spawn-protection=0
+          max-players=5
+          gamemode=creative
+          difficulty=peaceful
+          server-port=25565
+          PROP
 
       - name: Build the mod
         run: ./gradlew :forge-1.20.1:build --console=plain
 
-      - name: Launch the client under Xvfb
+      - name: Start Xvfb and the test server
         run: |
           Xvfb :99 -screen 0 1280x720x24 &
           sleep 3
+          cd server
+          (java -Xmx2G -jar server.jar nogui > server.log 2>&1 &)
+          echo "waiting for the server to be ready..."
+          for i in $(seq 1 60); do
+            if grep -q 'Done (' server.log 2>/dev/null; then break; fi
+            sleep 2
+          done
+          tail -3 server.log
+
+      - name: Launch the client and connect
+        run: |
           export DISPLAY=:99
           export LIBGL_ALWAYS_SOFTWARE=1
           export MESA_GL_VERSION_OVERRIDE=3.2
           export MESA_GLSL_VERSION_OVERRIDE=150
-          timeout 420 ./gradlew :forge-1.20.1:runClient --console=plain > client.log 2>&1 || true
-          cp forge-1.20.1/run/logs/latest.log latest.log 2>/dev/null || true
-          echo '--- mod load line ---'
-          grep -i 'MiNEDAR loaded' latest.log client.log || echo 'MiNEDAR load line not found'
+          (timeout 900 ./gradlew :forge-1.20.1:runClient --console=plain \
+              --args='--quickPlayMultiplayer localhost:25565' > client.log 2>&1 &)
+          echo "waiting for the client to join the world..."
+          for i in $(seq 1 120); do
+            if grep -q 'MiNEDAR tracking world' client.log 2>/dev/null; then break; fi
+            sleep 5
+          done
+          grep -i 'MiNEDAR loaded\|MiNEDAR tracking world' client.log || true
 
-      - name: Capture screenshot if the client window exists
-        if: always()
+      - name: Drive the scanner and capture screenshots
         run: |
           export DISPLAY=:99
           mkdir -p screenshots
-          xdotool search --name Minecraft > /tmp/win || true
-          import -window root screenshots/root.png 2>/dev/null || true
+          # Let the world settle and make sure the window has focus.
+          sleep 20
+          WID=$(xdotool search --name Minecraft | tail -1)
+          echo "window=$WID"
+          xdotool windowactivate "$WID" 2>/dev/null || true
+          xdotool windowfocus "$WID" 2>/dev/null || true
+          xdotool mousemove 640 360
+          sleep 2
+          import -window "$WID" screenshots/00_baseline.png
+          # Toggle LiDAR on and let it render the (still dot-free) view.
+          xdotool key --clearmodifiers g
+          sleep 3
+          import -window "$WID" screenshots/01_lidar_on.png
+          # Continuous scan: hold the left button while screenshotting ~1s apart.
+          xdotool mousedown 1
+          for i in $(seq 1 6); do
+            sleep 1
+            import -window "$WID" "screenshots/1${i}_scan.png"
+          done
+          xdotool mouseup 1
+          # Minimap + burst scan on the right button.
+          xdotool key --clearmodifiers m
+          sleep 1
+          import -window "$WID" screenshots/20_minimap.png
+          xdotool mousedown 3
+          sleep 2
+          xdotool mouseup 3
+          sleep 1
+          import -window "$WID" screenshots/21_afterscan.png
+          # Turn LiDAR back off; the world should reappear.
+          xdotool key --clearmodifiers g
+          sleep 3
+          import -window "$WID" screenshots/30_lidar_off.png
+
+      - name: Check the scan produced progressive change
+        if: always()
+        run: |
+          python3 - <<'PY'
+          import glob, sys
+          from PIL import Image
+          import numpy as np
+
+          def load(p):
+              return np.asarray(Image.open(p).convert("RGB"), dtype=np.int16)
+
+          frames = sorted(glob.glob("screenshots/1*_scan.png"))
+          print("scan frames:", frames)
+          if len(frames) < 2:
+              print("FAIL: fewer than two scan frames captured")
+              sys.exit(1)
+          prev = None
+          changed = 0
+          for f in frames:
+              img = load(f)
+              if prev is not None:
+                  diff = int((np.abs(img - prev).sum(2) > 40).sum())
+                  print(f, "changed pixels vs previous:", diff)
+                  if diff > 500:
+                      changed += 1
+              prev = img
+          with open("runtime-summary.txt", "w") as out:
+              out.write("progressively-changing scan frames: %d\n" % changed)
+          if changed < 1:
+              print("FAIL: LiDAR scan did not change the rendered view")
+              sys.exit(1)
+          print("OK: scan rendered progressive change")
+          PY
+
+      - name: Collect logs
+        if: always()
+        run: |
+          cp forge-1.20.1/run/logs/latest.log latest.log 2>/dev/null || true
+          cp server/server.log server.log 2>/dev/null || true
+          echo '--- mod load lines ---'
+          grep -i 'MiNEDAR loaded\|MiNEDAR tracking world' latest.log client.log || echo 'not found'
 
       - name: Upload runtime logs and screenshots
         if: always()
@@ -64,6 +174,8 @@ jobs:
           path: |
             client.log
             latest.log
+            server.log
+            runtime-summary.txt
             screenshots/
           if-no-files-found: warn
           retention-days: 14
